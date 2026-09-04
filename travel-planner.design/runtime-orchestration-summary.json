@@ -1,0 +1,237 @@
+{
+  "project": {
+    "resolvedLane": "library_bound",
+    "selectedIntentWorkflowRead": true,
+    "contextRequirementsLoaded": [
+      {
+        "path": "/Users/jackwu/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/runtime-boundaries/lane-runtime-contracts.md",
+        "readStatus": "loaded",
+        "bodyRead": true
+      },
+      {
+        "path": "/Users/jackwu/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/agent-dispatch-runtime/lane-dispatch-index.md",
+        "readStatus": "loaded",
+        "bodyRead": true
+      },
+      {
+        "path": "/Users/jackwu/.trae-cn/builtin/design/default/skills/solo-design/delivery-quality/page-rendering-quality-gate.md",
+        "readStatus": "loaded",
+        "bodyRead": false
+      },
+      {
+        "path": "/Users/jackwu/.trae-cn/builtin/design/default/skills/solo-design/delivery-quality/design-artifact-validation.md",
+        "readStatus": "loaded",
+        "bodyRead": false
+      },
+      {
+        "path": "/Users/jackwu/.trae-cn/builtin/design/default/skills/solo-design/delivery-quality/delivery-evidence-contract.md",
+        "readStatus": "loaded",
+        "bodyRead": false
+      }
+    ],
+    "contextReadScope": "library-bound core runtime + dispatch index + quality gates",
+    "validationRunDiscipline": "validate-design-workspace.mjs → validate-finish-readiness.mjs",
+    "lowValueCallWatchdog": {
+      "noProgressNextAction": "move-to-readiness"
+    }
+  },
+  "designSource": {
+    "libraryIdentity": {
+      "name": "Claude",
+      "id": "dl_builtin_claude",
+      "version": 0,
+      "scope": "builtin-global",
+      "path": "/Users/jackwu/.trae-cn/design_libraries/Claude",
+      "versionSource": "selected-context"
+    },
+    "brandPrefix": "claude",
+    "cssPath": "/Users/jackwu/.trae-cn/design_libraries/Claude/colors_and_type.css",
+    "actualTokenNameReference": [
+      "--claude-background",
+      "--claude-foreground",
+      "--claude-primary",
+      "--claude-primary-foreground",
+      "--claude-secondary",
+      "--claude-secondary-foreground",
+      "--claude-muted",
+      "--claude-muted-foreground",
+      "--claude-accent",
+      "--claude-accent-foreground",
+      "--claude-card",
+      "--claude-card-foreground",
+      "--claude-popover",
+      "--claude-popover-foreground",
+      "--claude-border",
+      "--claude-input",
+      "--claude-ring",
+      "--claude-destructive",
+      "--claude-destructive-foreground",
+      "--claude-sidebar",
+      "--claude-sidebar-foreground",
+      "--claude-sidebar-primary",
+      "--claude-sidebar-primary-foreground",
+      "--claude-sidebar-accent",
+      "--claude-sidebar-accent-foreground",
+      "--claude-sidebar-border",
+      "--brand-50",
+      "--brand-100",
+      "--brand-200",
+      "--brand-300",
+      "--brand-400",
+      "--brand-500",
+      "--brand-600",
+      "--brand-700",
+      "--success-500",
+      "--error-500",
+      "--radius-sm",
+      "--radius-md",
+      "--radius",
+      "--radius-xl",
+      "--radius-2xl",
+      "--radius-full",
+      "--font-display",
+      "--font-sans",
+      "--font-serif",
+      "--font-mono",
+      "--spacing",
+      "--shadow-sm",
+      "--shadow-md",
+      "--shadow-lg",
+      "--shadow-xl"
+    ],
+    "designDecisionSummary": "Warm editorial Claude aesthetic: terra-cotta primary #C96442, paper-like warm gray backgrounds, Newsreader display + Poppins UI + Lora reading fonts, soft radius scale (8-24px), quiet paper-like shadows, conversation-first UI with open composition and restrained brand emphasis.",
+    "componentIndexSummary": [
+      {"slug": "button", "name": "Button", "variants": ["primary", "secondary", "ghost"]},
+      {"slug": "card", "name": "Card", "variants": ["floating", "sunken", "emphasis", "disabled"]},
+      {"slug": "chat-bubble", "name": "Chat Bubble", "variants": ["user", "assistant", "thread"]},
+      {"slug": "input", "name": "Input", "variants": ["plain", "filled", "embedded"]},
+      {"slug": "badge", "name": "Badge", "variants": ["filled", "muted", "outline"]},
+      {"slug": "navigation", "name": "Navigation", "variants": ["tabs", "sidebar-rail", "bottom-nav"]}
+    ],
+    "uiKitSummary": "Web app layout with 248px sidebar (brand mark + nav links + upsell card) + topbar (search + actions) + main content area. Desktop-first responsive design.",
+    "allowedComponents": ["button", "card", "chat-bubble", "input", "badge", "navigation"],
+    "forbiddenInventedComponents": ["layout", "space", "grid"],
+    "iconAssets": {
+      "source": "assets/icons",
+      "projectIconDir": "assets/icons/dl_builtin_claude",
+      "libraryKey": "dl_builtin_claude",
+      "renderMethod": "css-mask",
+      "pathTemplate": "../assets/icons/dl_builtin_claude/{name}.svg",
+      "availableNames": [
+        "arrow-down", "arrow-left", "arrow-right", "arrow-up",
+        "box", "check", "chevron-down", "chevron-left", "chevron-right", "chevron-up",
+        "chevrons-down-up", "chevrons-up-down", "circle-alert", "circle-check",
+        "circle-minus", "circle-pause", "circle-play", "circle-plus",
+        "circle-question-mark", "external-link", "file", "folder-open", "folder",
+        "funnel", "grip", "heart", "house", "mail", "map-pin",
+        "message-circle-more", "mouse-pointer-click", "pen-line", "send-horizontal",
+        "star", "tag", "thumbs-down", "thumbs-up", "trash-2", "triangle-alert", "user"
+      ],
+      "totalCount": 39,
+      "coloringRule": "currentColor by default; override with Library token when needed"
+    },
+    "styleConstraints": {
+      "radiusMax": "24px",
+      "spacingBase": "4px",
+      "fontSizeBody": "14px",
+      "controlHeightDefault": "44px"
+    },
+    "productContext": {
+      "kitType": "ai-chat-app",
+      "productType": "AI travel planning assistant with multi-agent collaboration"
+    }
+  },
+  "pages": [
+    {
+      "nodeId": "page-index",
+      "title": "旅行规划助手",
+      "htmlSrc": "pages/index.html",
+      "deviceType": "web",
+      "viewportMode": "app-shell",
+      "pageType": "task-driven",
+      "componentPlan": [
+        {
+          "slug": "chat-bubble",
+          "contractKind": "legacy-json",
+          "previewFile": "/Users/jackwu/.trae-cn/design_libraries/Claude/preview/component-chat-bubble.html",
+          "contractFile": "/Users/jackwu/.trae-cn/design_libraries/Claude/components/chat-bubble.json"
+        },
+        {
+          "slug": "card",
+          "contractKind": "legacy-json",
+          "previewFile": "/Users/jackwu/.trae-cn/design_libraries/Claude/preview/component-card.html",
+          "contractFile": "/Users/jackwu/.trae-cn/design_libraries/Claude/components/card.json"
+        },
+        {
+          "slug": "button",
+          "contractKind": "legacy-json",
+          "previewFile": "/Users/jackwu/.trae-cn/design_libraries/Claude/preview/component-button.html",
+          "contractFile": "/Users/jackwu/.trae-cn/design_libraries/Claude/components/button.json"
+        },
+        {
+          "slug": "input",
+          "contractKind": "legacy-json",
+          "previewFile": "/Users/jackwu/.trae-cn/design_libraries/Claude/preview/component-input.html",
+          "contractFile": "/Users/jackwu/.trae-cn/design_libraries/Claude/components/input.json"
+        },
+        {
+          "slug": "badge",
+          "contractKind": "legacy-json",
+          "previewFile": "/Users/jackwu/.trae-cn/design_libraries/Claude/preview/component-badge.html",
+          "contractFile": "/Users/jackwu/.trae-cn/design_libraries/Claude/components/badge.json"
+        },
+        {
+          "slug": "navigation",
+          "contractKind": "legacy-json",
+          "previewFile": "/Users/jackwu/.trae-cn/design_libraries/Claude/preview/component-navigation.html",
+          "contractFile": "/Users/jackwu/.trae-cn/design_libraries/Claude/components/navigation.json"
+        }
+      ],
+      "uiKitPath": "/Users/jackwu/.trae-cn/design_libraries/Claude/ui_kits/website/index.html",
+      "tokenFidelity": "strict",
+      "qualityRisks": [
+        "Complex multi-section layout (sidebar + chat + itinerary panel + budget)",
+        "Agent progress animation states need careful timing",
+        "Budget breakdown visualization requires custom chart styling"
+      ],
+      "domIdsRequired": [
+        "chat-messages",
+        "agent-progress",
+        "itinerary-card",
+        "budget-panel",
+        "daily-timeline"
+      ],
+      "supplementaryReads": [
+        {
+          "path": "/Users/jackwu/.trae-cn/design_libraries/Claude/ui_kits/website/index.html",
+          "reason": "Layout reference for sidebar + topbar + main content pattern",
+          "ownerLane": "library_bound"
+        }
+      ]
+    }
+  ],
+  "dispatchPreflightManifest": [
+    {
+      "nodeId": "page-index",
+      "packetType": "LibraryBoundPagePacket",
+      "pageRuntimeGuide": "intent-workflows/intent-page-library-bound/library-bound-page-runtime.md",
+      "dispatchContract": "intent-workflows/intent-page-library-bound/dispatch-contract.md",
+      "allowedWritePaths": ["pages/index.html"],
+      "status": "completed"
+    }
+  ],
+  "expectedDispatches": [
+    {
+      "nodeId": "page-index",
+      "packetType": "LibraryBoundPagePacket",
+      "status": "completed",
+      "changedFiles": ["pages/index.html"],
+      "toolCallLedger": {
+        "todoWriteCalls": 0,
+        "previewCalls": 0,
+        "validationScriptCalls": 0,
+        "helperScriptWrites": 0
+      }
+    }
+  ]
+}

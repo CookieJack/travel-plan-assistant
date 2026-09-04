@@ -1,0 +1,112 @@
+{
+  "data": [
+    {
+      "id": "page-index",
+      "title": "我的行程",
+      "type": "page",
+      "device": "web",
+      "htmlSrc": "pages/index.html",
+      "width": 1440,
+      "height": 900,
+      "version": 1,
+      "createdAt": 1725408000000,
+      "canvasData": {
+        "x": 0,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1696,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-b11ce8d0",
+          "measuredAt": 1788510198621
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/index.html"
+      }
+    },
+    {
+      "id": "page-explore",
+      "title": "探索目的地",
+      "type": "page",
+      "device": "web",
+      "htmlSrc": "pages/explore.html",
+      "width": 1440,
+      "height": 900,
+      "version": 1,
+      "createdAt": 1725408200000,
+      "canvasData": {
+        "x": 480,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1219,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-8eb6024a",
+          "measuredAt": 1788510198621
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/explore.html"
+      }
+    },
+    {
+      "id": "page-favorites",
+      "title": "收藏",
+      "type": "page",
+      "device": "web",
+      "htmlSrc": "pages/favorites.html",
+      "width": 1440,
+      "height": 900,
+      "version": 1,
+      "createdAt": 1725408300000,
+      "canvasData": {
+        "x": 960,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 971,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-a6fe08f6",
+          "measuredAt": 1788510198621
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/favorites.html"
+      }
+    },
+    {
+      "id": "page-settings",
+      "title": "设置",
+      "type": "page",
+      "device": "web",
+      "htmlSrc": "pages/settings.html",
+      "width": 1440,
+      "height": 900,
+      "version": 1,
+      "createdAt": 1725408400000,
+      "canvasData": {
+        "x": 1440,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 988,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-2c1e6e5c",
+          "measuredAt": 1788510198621
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/settings.html"
+      }
+    }
+  ],
+  "config": {
+    "autoLayout": true,
+    "deviceType": "desktop"
+  }
+}
