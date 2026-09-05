@@ -1,0 +1,45 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build output
+dist
+build
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database
+*.sqlite
+*.sqlite-journal
+*.db
+*.db-journal
+drizzle/*.sql
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage
+.nyc_output
+
+# Trae / Cursor / Claude
+.trae
+.cursor
+.windsurfrules

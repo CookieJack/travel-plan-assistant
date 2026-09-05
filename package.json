@@ -1,0 +1,23 @@
+{
+  "name": "travel-plan-assistant",
+  "version": "0.1.0",
+  "description": "Phase0 多Agent旅行助手Demo - 纯本地内存运行",
+  "type": "module",
+  "scripts": {
+    "dev": "tsup src/main.ts --format esm --out-dir dist && node dist/main.js",
+    "build": "tsup src/main.ts --format esm --out-dir dist",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.2.9",
+    "@langchain/langgraph": "^1.4.14",
+    "langchain": "^1.5.10"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "dotenv": "^17.4.2",
+    "ts-node": "^10.9.2",
+    "tsup": "^8.5.1",
+    "typescript": "^7.0.2"
+  }
+}
