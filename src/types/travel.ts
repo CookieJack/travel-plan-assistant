@@ -11,6 +11,12 @@ export interface TravelRequest {
   days: number;
   /** 出行时间（YYYY-MM-DD） */
   travelDate: string;
+  /** 用户偏好（美食/自然风光/博物馆/亲子等） */
+  user_preference?: string;
+  /** 用户设置的预算上限 */
+  budget_limit?: number;
+  /** 出行风格（穷游/舒适/轻奢） */
+  travel_style?: string;
 }
 
 /** 单个机票方案 */
@@ -76,6 +82,12 @@ export interface BudgetResult {
   agent: 'BudgetingAgent';
   total: number;
   breakdown: CostItem[];
+  /** 是否超出用户预算上限 */
+  overBudget: boolean;
+  /** 预算告警提示（超支时存在） */
+  warning?: string;
+  /** 超支调整建议（超支时存在） */
+  suggestions?: string[];
 }
 
 /** LangGraph 全局状态 */

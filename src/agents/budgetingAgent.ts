@@ -52,11 +52,31 @@ export function budgetingAgent(state: TravelState) {
 
   const total = breakdown.reduce((sum, item) => sum + item.amount, 0);
 
+  // Phase1 增强：对比用户预算上限，输出超支告警与调整建议
+  const budgetLimit = request.budget_limit;
+  let overBudget = false;
+  let warning: string | undefined;
+  let suggestions: string[] | undefined;
+
+  if (typeof budgetLimit === 'number' && total > budgetLimit) {
+    overBudget = true;
+    const exceed = total - budgetLimit;
+    warning = `预估总花费 ¥${total} 超出预算上限 ¥${budgetLimit}，超支 ¥${exceed}。`;
+    suggestions = [
+      '建议选择更低价的机票方案（红眼航班/折扣经济舱）',
+      '建议下调酒店档次，选择经济型酒店或减少住宿天数',
+      '建议精简游玩活动，优先免费景点与低消费项目',
+    ];
+  }
+
   return {
     budget: {
       agent: 'BudgetingAgent' as const,
       total,
       breakdown,
+      overBudget,
+      warning,
+      suggestions,
     },
   };
 }

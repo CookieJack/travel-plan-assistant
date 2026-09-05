@@ -16,6 +16,15 @@ export function formatPlan(state: TravelState): string {
   lines.push(`📍 目的地：${request.destination}`);
   lines.push(`📅 出行时间：${request.travelDate}`);
   lines.push(`🗓️ 行程天数：${request.days} 天`);
+  if (request.travel_style) {
+    lines.push(`🎒 出行风格：${request.travel_style}`);
+  }
+  if (request.user_preference) {
+    lines.push(`❤️ 用户偏好：${request.user_preference}`);
+  }
+  if (typeof request.budget_limit === 'number') {
+    lines.push(`💰 预算上限：¥${request.budget_limit}`);
+  }
   lines.push('');
 
   // 机票方案
@@ -73,6 +82,21 @@ export function formatPlan(state: TravelState): string {
     });
     lines.push('');
     lines.push(`  💰 总预算：¥${budget.total}`);
+
+    // Phase1 增强：预算超支告警
+    if (budget.overBudget) {
+      lines.push('');
+      lines.push(`  ⚠️  预算告警：${budget.warning}`);
+      if (budget.suggestions && budget.suggestions.length > 0) {
+        lines.push('  💡 调整建议：');
+        budget.suggestions.forEach((s, i) => {
+          lines.push(`    ${i + 1}. ${s}`);
+        });
+      }
+    } else if (typeof request.budget_limit === 'number') {
+      const remain = request.budget_limit - budget.total;
+      lines.push(`  ✅ 预算充足，剩余 ¥${remain} 可自由支配`);
+    }
   } else {
     lines.push('  暂无数据');
   }
