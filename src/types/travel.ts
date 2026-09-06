@@ -100,3 +100,122 @@ export interface TravelState {
   /** 主控汇总后的最终旅行方案文本 */
   summary?: string;
 }
+
+// ============================================================
+// Phase3 新增：LLM 输出结构类型守卫（零依赖手写校验）
+// 仅校验字段存在性与基础类型，不做业务规则校验
+// ============================================================
+
+function isObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function isString(v: unknown): v is string {
+  return typeof v === 'string';
+}
+
+function isNumber(v: unknown): v is number {
+  return typeof v === 'number' && !Number.isNaN(v);
+}
+
+/** 校验单个机票方案 */
+function isFlightOption(v: unknown): v is FlightOption {
+  if (!isObject(v)) return false;
+  return (
+    isString(v.airline) &&
+    isString(v.flightNo) &&
+    isString(v.departTime) &&
+    isString(v.arriveTime) &&
+    isNumber(v.price) &&
+    isString(v.cabin)
+  );
+}
+
+/** 校验机票 Agent 的 LLM 原始输出 */
+export function validateFlightOutput(
+  data: unknown,
+): data is { options: FlightOption[] } {
+  if (!isObject(data)) return false;
+  if (!Array.isArray(data.options)) return false;
+  return data.options.every(isFlightOption);
+}
+
+/** 校验单个酒店方案 */
+function isHotelOption(v: unknown): v is HotelOption {
+  if (!isObject(v)) return false;
+  return (
+    isString(v.name) &&
+    isNumber(v.star) &&
+    isString(v.roomType) &&
+    isNumber(v.pricePerNight) &&
+    isString(v.location)
+  );
+}
+
+/** 校验酒店 Agent 的 LLM 原始输出 */
+export function validateHotelOutput(
+  data: unknown,
+): data is { options: HotelOption[] } {
+  if (!isObject(data)) return false;
+  if (!Array.isArray(data.options)) return false;
+  return data.options.every(isHotelOption);
+}
+
+/** 校验单个活动项 */
+function isActivityItem(v: unknown): v is ActivityItem {
+  if (!isObject(v)) return false;
+  return (
+    isString(v.time) &&
+    isString(v.name) &&
+    isString(v.description) &&
+    isNumber(v.cost)
+  );
+}
+
+/** 校验单日行程 */
+function isDayItinerary(v: unknown): v is DayItinerary {
+  if (!isObject(v)) return false;
+  if (!isNumber(v.day) || !Array.isArray(v.activities)) return false;
+  return v.activities.every(isActivityItem);
+}
+
+/** 校验活动 Agent 的 LLM 原始输出 */
+export function validateActivitiesOutput(
+  data: unknown,
+): data is { itinerary: DayItinerary[] } {
+  if (!isObject(data)) return false;
+  if (!Array.isArray(data.itinerary)) return false;
+  return data.itinerary.every(isDayItinerary);
+}
+
+/** 校验费用明细项 */
+function isCostItem(v: unknown): v is CostItem {
+  if (!isObject(v)) return false;
+  return isString(v.category) && isString(v.description) && isNumber(v.amount);
+}
+
+/** 校验预算 Agent 的 LLM 原始输出（不含 agent 字段，由代码补充） */
+export function validateBudgetOutput(
+  data: unknown,
+): data is {
+  total: number;
+  breakdown: CostItem[];
+  overBudget: boolean;
+  warning?: string | null;
+  suggestions?: string[] | null;
+} {
+  if (!isObject(data)) return false;
+  if (!isNumber(data.total)) return false;
+  if (!Array.isArray(data.breakdown) || !data.breakdown.every(isCostItem))
+    return false;
+  if (typeof data.overBudget !== 'boolean') return false;
+  if (data.warning !== undefined && data.warning !== null && !isString(data.warning))
+    return false;
+  if (
+    data.suggestions !== undefined &&
+    data.suggestions !== null &&
+    (!Array.isArray(data.suggestions) || !data.suggestions.every(isString))
+  )
+    return false;
+  return true;
+}

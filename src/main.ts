@@ -4,20 +4,81 @@
  * 启动多Agent工作流，输出最终方案
  *
  * 用法：
- *   pnpm dev -- <目的地> <天数> <出行时间> [预算上限] [用户偏好] [出行风格]
- *   示例：pnpm dev -- 东京 5 2026-10-01 10000 美食 舒适
+ *   pnpm dev -- [--mode mock|llm] [--format text|markdown|json] [--output <path>] <目的地> <天数> <出行时间> [预算上限] [用户偏好] [出行风格]
+ *   示例：pnpm dev -- --mode llm --format markdown --output plan.md 东京 5 2026-10-01 10000 美食 舒适
+ *
+ * 模式选项（Phase2 新增）：
+ *   --mode mock  使用 phase1 模拟逻辑（默认，不消耗 LLM token，便于调试）
+ *   --mode llm   使用真实豆包大模型生成各 Agent 结果
+ *
+ * 输出选项（Phase3 新增）：
+ *   --format text      纯文本输出（默认）
+ *   --format markdown  Markdown 格式输出
+ *   --format json      结构化 JSON 输出
+ *   --output <path>    将方案写入指定文件（同时仍在 stdout 输出）
  *
  * 若未提供参数，则进入交互式输入
  */
 import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
+import { writeFile } from 'node:fs/promises';
 import { buildTravelGraph } from './graph/buildGraph.js';
 import type { TravelRequest } from './types/travel.js';
+import { setMode, type RunMode } from './llm.js';
+import { formatPlan, formatPlanMarkdown, formatPlanJson } from './output/formatter.js';
+
+/** 输出格式（Phase3 新增） */
+type OutputFormat = 'text' | 'markdown' | 'json';
+
+/** 从命令行参数中提取运行模式、输出格式、输出路径，返回剩余的位置参数 */
+function extractOptions(args: string[]): {
+  mode: RunMode;
+  format: OutputFormat;
+  outputPath: string | null;
+  rest: string[];
+} {
+  let mode: RunMode = 'mock'; // 默认 mock 模式
+  let format: OutputFormat = 'text'; // 默认文本格式
+  let outputPath: string | null = null;
+  const rest: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--mode') {
+      const value = args[i + 1];
+      if (value === 'mock' || value === 'llm') {
+        mode = value;
+        i++;
+      } else {
+        throw new Error(`无效的 --mode 值：${value}，仅支持 mock 或 llm`);
+      }
+    } else if (args[i] === '--format') {
+      const value = args[i + 1];
+      if (value === 'text' || value === 'markdown' || value === 'json') {
+        format = value;
+        i++;
+      } else {
+        throw new Error(
+          `无效的 --format 值：${value}，仅支持 text / markdown / json`,
+        );
+      }
+    } else if (args[i] === '--output') {
+      const value = args[i + 1];
+      if (value) {
+        outputPath = value;
+        i++;
+      } else {
+        throw new Error('--output 需要指定文件路径');
+      }
+    } else {
+      rest.push(args[i]);
+    }
+  }
+
+  return { mode, format, outputPath, rest };
+}
 
 /** 解析命令行参数 */
-function parseArgs(): TravelRequest | null {
-  // 过滤掉 pnpm/npm 传递的 '--' 分隔符
-  const args = process.argv.slice(2).filter((a) => a !== '--');
+function parseArgs(args: string[]): TravelRequest | null {
   if (args.length >= 3) {
     const [destination, daysStr, travelDate, budgetStr, preference, style] = args;
     const days = parseInt(daysStr, 10);
@@ -76,17 +137,43 @@ async function promptInput(): Promise<TravelRequest> {
 
 /** 主函数 */
 async function main() {
-  // 1. 获取用户输入
-  const request = parseArgs() ?? (await promptInput());
+  // 0. 解析命令行参数，提取运行模式、输出格式、输出路径
+  const rawArgs = process.argv.slice(2).filter((a) => a !== '--');
+  const { mode, format, outputPath, rest } = extractOptions(rawArgs);
+  setMode(mode);
 
-  console.log('\n🚀 正在启动多Agent旅行规划工作流...\n');
+  // 1. 获取用户输入
+  const request = parseArgs(rest) ?? (await promptInput());
+
+  console.log(`\n🚀 正在启动多Agent旅行规划工作流（模式：${mode}，格式：${format}）...\n`);
 
   // 2. 构建并执行工作流
   const app = buildTravelGraph();
   const result = await app.invoke({ request });
 
-  // 3. 输出最终方案
-  console.log(result.summary ?? '⚠️ 未能生成旅行方案');
+  // 3. 按所选格式生成输出文本
+  let outputText: string;
+  switch (format) {
+    case 'markdown':
+      outputText = formatPlanMarkdown(result);
+      break;
+    case 'json':
+      outputText = formatPlanJson(result);
+      break;
+    case 'text':
+    default:
+      outputText = result.summary ?? '⚠️ 未能生成旅行方案';
+      break;
+  }
+
+  // 4. 输出到 stdout
+  console.log(outputText);
+
+  // 5. 若指定 --output，则写入文件
+  if (outputPath) {
+    await writeFile(outputPath, outputText, 'utf8');
+    console.log(`\n💾 方案已写入文件：${outputPath}`);
+  }
 }
 
 main().catch((err) => {
