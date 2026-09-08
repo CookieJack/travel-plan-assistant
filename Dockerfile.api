@@ -1,0 +1,50 @@
+# ============================================
+# API 服务 Dockerfile（多阶段构建）
+# ============================================
+
+# ---- 构建阶段 ----
+FROM node:24-alpine AS builder
+
+WORKDIR /app
+
+# 启用 pnpm（通过 corepack）
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# 复制整个 monorepo（.dockerignore 已排除 node_modules/dist/.env 等）
+COPY . .
+
+# 安装全部依赖（含 devDependencies，用于构建与 prisma）
+RUN pnpm install --frozen-lockfile
+
+# 构建所有 workspace 包（shared/llm/mock-data/agents + api）
+# apps/api 的 build 脚本内含 prisma generate
+RUN pnpm build
+
+# ---- 运行阶段 ----
+FROM node:24-alpine AS runner
+
+WORKDIR /app
+
+# 启用 pnpm（entrypoint 中需调用 pnpm prisma:push）
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# 从 builder 复制完整项目（含 node_modules 与所有 dist 产物）
+COPY --from=builder /app /app
+
+# 复制 entrypoint 启动脚本
+COPY apps/api/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+# 环境变量
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# 暴露端口
+EXPOSE 3000
+
+# 健康检查
+HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=5 \
+  CMD wget -qO- http://localhost:3000/api/health || exit 1
+
+# 启动
+ENTRYPOINT ["/app/entrypoint.sh"]

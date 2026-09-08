@@ -1,0 +1,32 @@
+{
+  "name": "@travel/api",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "prisma generate && tsup src/index.ts --format esm --out-dir dist --external dotenv",
+    "dev": "tsup src/index.ts --format esm --out-dir dist --external dotenv --watch",
+    "start": "node dist/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push",
+    "prisma:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.1",
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "^7.10.0",
+    "@travel/agents": "workspace:*",
+    "@travel/llm": "workspace:*",
+    "@travel/shared": "workspace:*",
+    "hono": "^4.13.7",
+    "ioredis": "^6.0.0",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "@types/pg": "8.23.1",
+    "prisma": "^7.10.0",
+    "tsup": "^8.5.1",
+    "typescript": "^7.0.2"
+  }
+}

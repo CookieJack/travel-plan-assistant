@@ -1,18 +1,27 @@
 {
   "name": "travel-plan-assistant",
   "version": "0.1.0",
-  "description": "Phase0 多Agent旅行助手Demo - 纯本地内存运行",
+  "description": "多Agent旅行规划助手 - pnpm monorepo",
+  "private": true,
   "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "tsup src/main.ts --format esm --out-dir dist --external dotenv && node dist/main.js",
-    "build": "tsup src/main.ts --format esm --out-dir dist --external dotenv",
-    "start": "node dist/main.js"
-  },
-  "dependencies": {
-    "@langchain/core": "^1.2.9",
-    "@langchain/langgraph": "^1.4.14",
-    "@langchain/openai": "^1.5.11",
-    "langchain": "^1.5.10"
+    "build": "pnpm -r --sort build",
+    "dev": "pnpm --filter @travel/cli dev",
+    "dev:api": "pnpm --filter @travel/api dev",
+    "dev:web": "pnpm --filter @travel/web dev",
+    "build:web": "pnpm --filter @travel/web build",
+    "start:api": "pnpm --filter @travel/api start",
+    "db:push": "pnpm --filter @travel/api prisma:push",
+    "db:studio": "pnpm --filter @travel/api prisma:studio",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "docker:clean": "docker compose down -v",
+    "clean": "pnpm -r exec rm -rf dist"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",

@@ -1,9 +1,18 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
 onlyBuiltDependencies:
   - esbuild
+  - prisma
+  - '@prisma/engines'
 
 minimumReleaseAgeExclude:
   - '@langchain/langgraph-sdk@1.10.2'
   - '@langchain/langgraph@1.4.14'
+  - lucide-react@1.42.0
 
 allowBuilds:
   esbuild: true
+  prisma: true
+  '@prisma/engines': true

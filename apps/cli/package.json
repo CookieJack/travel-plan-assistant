@@ -1,0 +1,21 @@
+{
+  "name": "@travel/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsup src/main.ts --format esm --out-dir dist --external dotenv",
+    "dev": "tsup src/main.ts --format esm --out-dir dist --external dotenv && node dist/main.js",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@travel/agents": "workspace:*",
+    "@travel/llm": "workspace:*",
+    "@travel/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "tsup": "^8.5.1",
+    "typescript": "^7.0.2"
+  }
+}

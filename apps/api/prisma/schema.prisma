@@ -1,0 +1,30 @@
+// Prisma Schema - Phase6
+// PostgreSQL + Prisma ORM
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model TravelPlan {
+  id             String   @id @default(cuid())
+  destination    String
+  days           Int
+  travelDate     String
+  userPreference String?
+  budgetLimit    Float?
+  travelStyle    String?
+  mode           String   // "mock" | "llm"
+  flights        Json?
+  hotels         Json?
+  activities     Json?
+  budget         Json?
+  summary        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([destination])
+  @@index([createdAt])
+}

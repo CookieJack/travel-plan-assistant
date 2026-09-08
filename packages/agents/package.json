@@ -1,0 +1,29 @@
+{
+  "name": "@travel/agents",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --out-dir dist --external dotenv",
+    "dev": "tsup src/index.ts --format esm --out-dir dist --external dotenv --watch"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.2.9",
+    "@langchain/langgraph": "^1.4.14",
+    "langchain": "^1.5.10",
+    "@travel/shared": "workspace:*",
+    "@travel/llm": "workspace:*",
+    "@travel/mock-data": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "typescript": "^7.0.2"
+  }
+}
