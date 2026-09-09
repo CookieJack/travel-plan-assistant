@@ -30,9 +30,10 @@ const StateAnnotation = Annotation.Root({
   budget: Annotation<BudgetResult | undefined>(),
   summary: Annotation<string | undefined>(),
   // Phase10 新增：工具调用记录
-  // 本阶段只有 flightAgent 写入，使用默认覆盖策略
-  // Phase12 多 Agent 写入时需改为 reducer 合并
-  toolCalls: Annotation<ToolCallRecord[] | undefined>(),
+  // Phase12 改为 reducer 合并：flight/hotel/activities 三个 Agent 并行写入，需追加而非覆盖
+  toolCalls: Annotation<ToolCallRecord[] | undefined>({
+    reducer: (left, right) => [...(left ?? []), ...(right ?? [])],
+  }),
 });
 
 /**

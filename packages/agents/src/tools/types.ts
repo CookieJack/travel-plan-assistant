@@ -14,5 +14,6 @@ import type { DynamicStructuredTool } from '@langchain/core/tools';
  */
 export interface AgentTools {
   flight: DynamicStructuredTool[];
-  // hotel / activities / budgeting 留空，后续阶段扩展
+  hotel: DynamicStructuredTool[]; // Phase12 新增
+  activities: DynamicStructuredTool[]; // Phase12 新增
 }

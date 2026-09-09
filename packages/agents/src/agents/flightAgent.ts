@@ -9,7 +9,7 @@
  *
  * Phase2 遗留：llm 模式失败时回退 mock 兜底（保留）
  */
-import type { TravelState, FlightOption, ToolCallRecord } from '@travel/shared';
+import type { TravelState, FlightOption } from '@travel/shared';
 import { validateFlightOutput } from '@travel/shared';
 import { isLLMMode, getLLM } from '@travel/llm';
 import {
@@ -19,6 +19,7 @@ import {
   type AIMessage,
 } from '@langchain/core/messages';
 import { searchFlightsTool } from '../tools/flightTools.js';
+import { buildToolCallRecord, summarizeResult } from '../tools/utils.js';
 
 /** 机票 Agent 专属系统提示词（llm 模式，工具调用版） */
 const FLIGHT_SYSTEM_PROMPT = `你是机票查询智能体 FlightSearchAgent。
@@ -46,47 +47,6 @@ const FLIGHT_SYSTEM_PROMPT = `你是机票查询智能体 FlightSearchAgent。
 - 必须调用 searchFlights 工具获取数据，不要凭空编造
 - 根据用户预算上限、出行风格匹配舱位与价格档位
 - 只输出 JSON，不要任何解释、注释或 Markdown 代码块`;
-
-/**
- * 清理对象中的 undefined 值（Prisma JSON 序列化不支持 undefined）
- */
-function cleanUndefined(obj: Record<string, unknown>): Record<string, unknown> {
-  const cleaned: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (value !== undefined) {
-      cleaned[key] = value;
-    }
-  }
-  return cleaned;
-}
-
-/**
- * 构造工具调用记录
- */
-function buildToolCallRecord(
-  agent: string,
-  toolName: string,
-  args: Record<string, unknown>,
-  resultSummary: string,
-  mode: 'mock' | 'llm',
-): ToolCallRecord {
-  return {
-    agent,
-    toolName,
-    args: cleanUndefined(args),
-    resultSummary,
-    timestamp: new Date().toISOString(),
-    mode,
-  };
-}
-
-/**
- * 截断结果摘要，避免 state 过大
- */
-function summarizeResult(result: string, maxLen = 200): string {
-  if (result.length <= maxLen) return result;
-  return result.slice(0, maxLen) + '...';
-}
 
 /**
  * 从 TravelRequest 提取 searchFlights 工具参数

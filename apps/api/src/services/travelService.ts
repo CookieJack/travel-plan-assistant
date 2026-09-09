@@ -152,10 +152,14 @@ export async function* generatePlanStream(
   const stream = await app.stream({ request }, { streamMode: 'updates' });
   for await (const chunk of stream) {
     for (const [nodeName, update] of Object.entries(chunk)) {
-      // 合并节点输出到最终状态
-      finalState = { ...finalState, ...(update as Partial<TravelState>) };
-      // 发送节点完成事件（携带该节点产出的 toolCalls）
       const nodeUpdate = update as Partial<TravelState>;
+      // toolCalls 使用追加合并（与 buildGraph 的 Annotation reducer 一致）
+      // Phase12：多个 Agent 并行写入 toolCalls，需追加而非覆盖
+      const mergedToolCalls = nodeUpdate.toolCalls
+        ? [...(finalState.toolCalls ?? []), ...nodeUpdate.toolCalls]
+        : finalState.toolCalls;
+      finalState = { ...finalState, ...nodeUpdate, toolCalls: mergedToolCalls };
+      // 发送节点完成事件（携带该节点产出的 toolCalls）
       yield {
         type: 'node_complete',
         data: {
