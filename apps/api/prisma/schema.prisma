@@ -22,6 +22,7 @@ model TravelPlan {
   activities     Json?
   budget         Json?
   summary        String?
+  toolCalls      Json?    // Phase11 新增：工具调用记录
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

@@ -31,6 +31,30 @@ interface PersistMeta {
 }
 
 /**
+ * SSE 流式事件（Phase11 新增）
+ */
+export type SSEEvent =
+  | { type: 'start'; data: { message: string } }
+  | { type: 'node_complete'; data: { node: string; toolCalls?: TravelState['toolCalls'] } }
+  | { type: 'cache_hit'; data: { result: TravelState & PersistMeta } }
+  | { type: 'complete'; data: { result: TravelState & PersistMeta } }
+  | { type: 'error'; data: { message: string } };
+
+/**
+ * 持久化规划结果到数据库（Phase11 抽取：供 generatePlan 与 generatePlanStream 共用）
+ */
+async function persistPlan(state: TravelState, mode: RunMode): Promise<PersistMeta> {
+  let meta: PersistMeta = { id: '', createdAt: new Date().toISOString() };
+  try {
+    const saved = await savePlan(state, mode);
+    meta = { id: saved.id, createdAt: saved.createdAt.toISOString() };
+  } catch (err) {
+    console.error('[TravelService] 持久化规划结果失败：', (err as Error).message);
+  }
+  return meta;
+}
+
+/**
  * 执行旅行规划并持久化结果
  * @param request 用户旅行需求
  * @param mode 运行模式 mock | llm
@@ -64,13 +88,7 @@ export async function generatePlan(
   }
 
   // 持久化到数据库（失败不阻断，仅记日志）
-  let meta: PersistMeta = { id: '', createdAt: new Date().toISOString() };
-  try {
-    const saved = await savePlan(result, mode);
-    meta = { id: saved.id, createdAt: saved.createdAt.toISOString() };
-  } catch (err) {
-    console.error('[TravelService] 持久化规划结果失败：', (err as Error).message);
-  }
+  const meta = await persistPlan(result, mode);
 
   // 新规划生成后，清理历史列表缓存（保证列表能看到新记录）
   await cacheDelByPattern('plan:list:*');
@@ -96,4 +114,65 @@ export async function generatePlan(
         ...meta,
       };
   }
+}
+
+/**
+ * 流式执行旅行规划，通过异步生成器逐事件产出（Phase11 新增）
+ * 事件顺序：cache_hit（命中缓存）/ start → node_complete（每个节点）→ complete
+ * @param request 用户旅行需求
+ * @param mode 运行模式 mock | llm
+ */
+export async function* generatePlanStream(
+  request: TravelRequest,
+  mode: RunMode = 'mock',
+): AsyncGenerator<SSEEvent> {
+  // 设置运行模式
+  setMode(mode);
+
+  // 计算规划结果缓存键
+  const cacheKey = planResultKey(request, mode);
+
+  // 查询缓存：命中则直接返回完整结果
+  const cached = await cacheGet<TravelState>(cacheKey);
+  if (cached) {
+    console.log('[TravelService] 规划结果命中缓存，跳过 Agent 执行');
+    const meta = await persistPlan(cached, mode);
+    await cacheDelByPattern('plan:list:*');
+    yield { type: 'cache_hit', data: { result: { ...cached, ...meta } } };
+    return;
+  }
+
+  // 未命中：发送开始事件
+  yield { type: 'start', data: { message: '开始生成旅行规划...' } };
+
+  // 构建并流式执行工作流
+  const app = buildTravelGraph();
+  let finalState: TravelState = { request };
+
+  const stream = await app.stream({ request }, { streamMode: 'updates' });
+  for await (const chunk of stream) {
+    for (const [nodeName, update] of Object.entries(chunk)) {
+      // 合并节点输出到最终状态
+      finalState = { ...finalState, ...(update as Partial<TravelState>) };
+      // 发送节点完成事件（携带该节点产出的 toolCalls）
+      const nodeUpdate = update as Partial<TravelState>;
+      yield {
+        type: 'node_complete',
+        data: {
+          node: nodeName,
+          toolCalls: nodeUpdate.toolCalls,
+        },
+      };
+    }
+  }
+
+  // 写入缓存（失败仅记日志，不阻断）
+  await cacheSet(cacheKey, finalState, PLAN_RESULT_TTL[mode]);
+
+  // 持久化 + 清理列表缓存
+  const meta = await persistPlan(finalState, mode);
+  await cacheDelByPattern('plan:list:*');
+
+  // 发送完成事件
+  yield { type: 'complete', data: { result: { ...finalState, ...meta } } };
 }

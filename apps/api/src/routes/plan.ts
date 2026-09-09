@@ -10,7 +10,7 @@ import type { OutputFormat, RunMode } from '../types/api.js';
 const plan = new Hono();
 
 /** 校验并解析请求体 */
-function parseRequestBody(body: unknown): TravelRequest | { error: string } {
+export function parseRequestBody(body: unknown): TravelRequest | { error: string } {
   if (typeof body !== 'object' || body === null) {
     return { error: '请求体必须为 JSON 对象' };
   }
@@ -66,7 +66,7 @@ function parseRequestBody(body: unknown): TravelRequest | { error: string } {
 }
 
 /** 解析查询参数中的 mode */
-function parseMode(raw: string | undefined): RunMode {
+export function parseMode(raw: string | undefined): RunMode {
   if (raw === 'llm') return 'llm';
   return 'mock';
 }

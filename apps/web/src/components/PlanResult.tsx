@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/tabs';
 import type { TravelState } from '@travel/shared';
 import type { JsonPlanResponse } from '@/api/client';
+import { ToolCallList } from './ToolCallList';
 
 interface PlanResultProps {
   result: JsonPlanResponse;
@@ -22,16 +23,17 @@ interface PlanResultProps {
  * 使用 Tabs 分区域展示：概览、机票、酒店、行程、预算
  */
 export function PlanResult({ result }: PlanResultProps) {
-  const { request, flights, hotels, activities, budget, summary } = result;
+  const { request, flights, hotels, activities, budget, summary, toolCalls } = result;
 
   return (
     <Tabs defaultValue="overview" className="w-full">
-      <TabsList className="grid w-full grid-cols-5">
+      <TabsList className="grid w-full grid-cols-6">
         <TabsTrigger value="overview">概览</TabsTrigger>
         <TabsTrigger value="flights">机票</TabsTrigger>
         <TabsTrigger value="hotels">酒店</TabsTrigger>
         <TabsTrigger value="activities">行程</TabsTrigger>
         <TabsTrigger value="budget">预算</TabsTrigger>
+        <TabsTrigger value="process">执行过程</TabsTrigger>
       </TabsList>
 
       {/* 概览 */}
@@ -269,6 +271,22 @@ export function PlanResult({ result }: PlanResultProps) {
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">暂无数据</p>
+            )}
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      {/* 执行过程 */}
+      <TabsContent value="process">
+        <Card>
+          <CardHeader>
+            <CardTitle>执行过程</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {toolCalls && toolCalls.length > 0 ? (
+              <ToolCallList toolCalls={toolCalls} />
+            ) : (
+              <p className="text-sm text-muted-foreground">暂无工具调用记录</p>
             )}
           </CardContent>
         </Card>

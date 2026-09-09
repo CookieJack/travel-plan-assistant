@@ -17,6 +17,7 @@ config({ path: join(__dirname, '../../../.env') });
 // 动态导入路由（确保环境变量已加载）
 const { health } = await import('./routes/health.js');
 const { plan } = await import('./routes/plan.js');
+const { planStream } = await import('./routes/planStream.js');
 const { plans } = await import('./routes/plans.js');
 
 // 创建 Hono 应用
@@ -35,6 +36,7 @@ app.use(
 // 注册路由
 app.route('/api/health', health);
 app.route('/api/plan', plan);
+app.route('/api/plan/stream', planStream);
 app.route('/api/plans', plans);
 
 // 全局错误处理

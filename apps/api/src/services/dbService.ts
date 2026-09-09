@@ -34,6 +34,7 @@ export async function savePlan(
       activities: (state.activities as unknown) ?? null,
       budget: (state.budget as unknown) ?? null,
       summary: state.summary ?? null,
+      toolCalls: (state.toolCalls as unknown) ?? null,
     },
     select: {
       id: true,

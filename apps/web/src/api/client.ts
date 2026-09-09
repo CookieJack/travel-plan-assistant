@@ -1,8 +1,8 @@
 /**
  * API 请求封装
- * 封装对后端三个接口的调用
+ * 封装对后端接口的调用
  */
-import type { TravelRequest, TravelState } from '@travel/shared';
+import type { TravelRequest, TravelState, ToolCallRecord } from '@travel/shared';
 
 /** 运行模式 */
 export type RunMode = 'mock' | 'llm';
@@ -137,4 +137,93 @@ export async function getPlanById(id: string): Promise<PlanDetail> {
     ...(data as PlanDetail),
     request,
   } as PlanDetail;
+}
+
+// ============================================================
+// Phase11 新增：SSE 流式规划
+// ============================================================
+
+/** 流式规划回调 */
+export interface StreamCallbacks {
+  /** 某个 Agent 节点执行完成 */
+  onNodeComplete?: (node: string, toolCalls?: ToolCallRecord[]) => void;
+}
+
+/** 解析单个 SSE 文本块为 { event, data } */
+function parseSSEEvent(raw: string): { event: string; data: any } | null {
+  const lines = raw.split('\n');
+  let event = 'message';
+  let dataStr = '';
+  for (const line of lines) {
+    if (line.startsWith('event:')) {
+      event = line.slice(6).trim();
+    } else if (line.startsWith('data:')) {
+      dataStr += line.slice(5).trim();
+    }
+  }
+  if (!dataStr) return null;
+  try {
+    return { event, data: JSON.parse(dataStr) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 流式生成旅行规划
+ * POST /api/plan/stream?mode={mode}
+ *
+ * 使用 fetch + ReadableStream 手动解析 SSE（POST 请求无法用 EventSource）
+ * 通过回调实时推送节点完成事件，最终返回完整规划结果。
+ */
+export async function generatePlanStream(
+  request: TravelRequest,
+  mode: RunMode,
+  callbacks?: StreamCallbacks,
+): Promise<JsonPlanResponse> {
+  const res = await fetch(`${API_BASE}/plan/stream?mode=${mode}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+
+  if (!res.ok || !res.body) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as ErrorResponse).error || '规划生成失败');
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let finalResult: JsonPlanResponse | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    // SSE 事件以空行分隔
+    const events = buffer.split('\n\n');
+    buffer = events.pop() || '';
+
+    for (const raw of events) {
+      const parsed = parseSSEEvent(raw);
+      if (!parsed) continue;
+
+      switch (parsed.event) {
+        case 'node_complete':
+          callbacks?.onNodeComplete?.(parsed.data.node, parsed.data.toolCalls);
+          break;
+        case 'cache_hit':
+        case 'complete':
+          finalResult = parsed.data.result as JsonPlanResponse;
+          break;
+        case 'error':
+          throw new Error(parsed.data.message || '规划生成失败');
+      }
+    }
+  }
+
+  if (!finalResult) throw new Error('未收到规划结果');
+  return finalResult;
 }
