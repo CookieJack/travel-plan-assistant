@@ -90,6 +90,25 @@ export interface BudgetResult {
   suggestions?: string[];
 }
 
+/**
+ * 工具调用记录（Phase10 新增）
+ * 记录 Agent 调用工具的过程，供执行过程可视化使用
+ */
+export interface ToolCallRecord {
+  /** 调用工具的 Agent 名称 */
+  agent: string;
+  /** 工具名称 */
+  toolName: string;
+  /** 工具调用参数 */
+  args: Record<string, unknown>;
+  /** 工具返回结果摘要（截断后的字符串，避免状态过大） */
+  resultSummary: string;
+  /** 调用时间戳（ISO 字符串） */
+  timestamp: string;
+  /** 调用模式：mock（固定逻辑调用）/ llm（LLM 决策调用） */
+  mode: 'mock' | 'llm';
+}
+
 /** LangGraph 全局状态 */
 export interface TravelState {
   request: TravelRequest;
@@ -99,6 +118,8 @@ export interface TravelState {
   budget?: BudgetResult;
   /** 主控汇总后的最终旅行方案文本 */
   summary?: string;
+  /** 工具调用记录（Phase10 新增，供可视化使用） */
+  toolCalls?: ToolCallRecord[];
 }
 
 // ============================================================

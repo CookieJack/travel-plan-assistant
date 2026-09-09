@@ -13,6 +13,7 @@ import type {
   HotelResult,
   ActivitiesResult,
   BudgetResult,
+  ToolCallRecord,
 } from '@travel/shared';
 import { flightAgent } from '../agents/flightAgent.js';
 import { hotelAgent } from '../agents/hotelAgent.js';
@@ -28,6 +29,10 @@ const StateAnnotation = Annotation.Root({
   activities: Annotation<ActivitiesResult | undefined>(),
   budget: Annotation<BudgetResult | undefined>(),
   summary: Annotation<string | undefined>(),
+  // Phase10 新增：工具调用记录
+  // 本阶段只有 flightAgent 写入，使用默认覆盖策略
+  // Phase12 多 Agent 写入时需改为 reducer 合并
+  toolCalls: Annotation<ToolCallRecord[] | undefined>(),
 });
 
 /**
