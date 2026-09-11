@@ -29,6 +29,8 @@ interface ChatPanelProps {
   loading: boolean;
   onModeChange: (mode: RunMode) => void;
   onSend: (text: string) => void;
+  /** 取消当前生成（中途改计划时调用） */
+  onCancel?: () => void;
 }
 
 export function ChatPanel({
@@ -37,6 +39,7 @@ export function ChatPanel({
   loading,
   onModeChange,
   onSend,
+  onCancel,
 }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -51,7 +54,7 @@ export function ChatPanel({
 
   const handleSend = () => {
     const text = input.trim();
-    if (!text || loading) return;
+    if (!text) return;
     onSend(text);
     setInput('');
   };
@@ -102,7 +105,7 @@ export function ChatPanel({
         {loading && (
           <div className="flex justify-start">
             <div className="bg-muted rounded-lg px-4 py-3 text-sm text-muted-foreground">
-              正在分析您的需求...
+              正在为您规划中，稍等一下～ 也可以直接输入新的需求来调整计划
             </div>
           </div>
         )}
@@ -128,13 +131,26 @@ export function ChatPanel({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="描述你的旅行需求..."
-            disabled={loading}
+            placeholder={loading ? '想调整计划？直接输入新需求即可' : '描述你的旅行需求...'}
             className="min-h-[60px] resize-none"
           />
-          <Button onClick={handleSend} disabled={loading || !input.trim()} className="self-end">
-            发送
-          </Button>
+          {loading ? (
+            <Button
+              onClick={() => onCancel?.()}
+              variant="outline"
+              className="self-end"
+            >
+              取消
+            </Button>
+          ) : (
+            <Button
+              onClick={handleSend}
+              disabled={!input.trim()}
+              className="self-end"
+            >
+              发送
+            </Button>
+          )}
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import type { TravelRequest, ToolCallRecord } from '@travel/shared';
 import { ChatPanel, type ChatMessage } from '@/components/ChatPanel';
 import { PlanResult } from '@/components/PlanResult';
@@ -35,6 +35,8 @@ export function PlanPage() {
   >([]);
   // 规划结果
   const [result, setResult] = useState<JsonPlanResponse | null>(null);
+  // 请求取消控制器（支持中途改计划）
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Phase14 修订状态
   const [originalResult, setOriginalResult] = useState<JsonPlanResponse | null>(null);
@@ -43,8 +45,23 @@ export function PlanPage() {
   const [reviseNodes, setReviseNodes] = useState<string[]>([]);
   const [reviseToolCalls, setReviseToolCalls] = useState<ToolCallRecord[]>([]);
 
+  /** 取消当前生成 */
+  const handleCancel = () => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setLoading(false);
+    setPlanningStarted(false);
+  };
+
   /** 发送用户消息 */
   const handleSend = async (text: string) => {
+    // 若已有进行中的请求，先取消（用户中途改计划）
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setLoading(true);
     setError('');
     setResult(null);
@@ -91,7 +108,7 @@ export function PlanPage() {
             setStreamToolCalls((prev) => [...prev, ...toolCalls]);
           }
         },
-      });
+      }, controller.signal);
 
       // 判断是追问还是规划结果
       if ((streamResult as ClarificationResult).needClarification === true) {
@@ -127,9 +144,17 @@ export function PlanPage() {
         ]);
       }
     } catch (err) {
+      // 用户主动取消（中途改计划）不显示错误
+      if ((err as Error).name === 'AbortError') {
+        return;
+      }
       setError(err instanceof Error ? err.message : '规划生成失败');
     } finally {
-      setLoading(false);
+      // 仅当仍是当前请求时才重置状态
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+        setLoading(false);
+      }
     }
   };
 
@@ -195,6 +220,7 @@ export function PlanPage() {
             loading={loading}
             onModeChange={setMode}
             onSend={handleSend}
+            onCancel={handleCancel}
           />
         </div>
 

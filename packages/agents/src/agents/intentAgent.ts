@@ -28,7 +28,7 @@ function getIntentSystemPrompt(): string {
   const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
   const weekDay = weekDays[now.getDay()];
   return `你是旅行规划助手的意图识别与信息抽取模块。
-请从用户的自然语言描述中提取旅行规划所需的结构化信息。
+请从用户的自然语言描述（含多轮对话上下文）中提取旅行规划所需的结构化信息。
 
 当前日期：${today}（星期${weekDay}）
 
@@ -39,16 +39,22 @@ function getIntentSystemPrompt(): string {
   - 相对日期需根据当前日期推算：明天=+1天，后天=+2天，大后天=+3天
   - 下周一~日 = 下周对应的星期几；本周/这周X = 本周对应的星期几
   - 节日映射：元旦→01-01，春节→02-01，清明→04-05，劳动节→05-01，端午→06-01，中秋→09-15，国庆→10-01
+  - 【重要】若用户只说"周X"或"星期X"（如"周五"），必须结合上下文推断是本周还是下周：
+    若对话中提到"下周"，则"周X"指下周的星期X；否则指本周的星期X。
+    例如：用户先说"下周去杭州"，追问后回答"周五"，则 travelDate = 下周五的日期。
 - budget_limit: 预算上限（数字，单位元，可选）
 - user_preference: 用户偏好（如美食、自然风光、博物馆等，可选）
 - travel_style: 出行风格（穷游/舒适/轻奢，可选）
 - destinations: 多城市列表（若用户提到多个城市，填此数组，每项含 city 和 days；单城市时不填）
+- clarificationQuestion: 当 destination、days、travelDate 中任一必填字段缺失时，用一句自然、口语化的中文向用户追问缺失的信息。语气要亲切自然，像朋友聊天，不要用"请补充以下信息"这种生硬句式。若所有必填字段都已提取，此字段留空不填。
 
 要求：
 - 只输出 JSON，不要任何解释或前缀
 - 无法确定的字段留空字符串或不填
 - 日期统一转为 YYYY-MM-DD 格式
-- 若用户提到多个城市，提取到 destinations 数组`;
+- 若用户提到多个城市，提取到 destinations 数组
+- clarificationQuestion 要口语化，例如缺日期可以说"打算什么时候出发呀？"，缺目的地可以说"这次想去哪里玩呢？"
+- 务必仔细阅读完整对话上下文，不要遗漏用户在追问中补充的信息`;
 }
 
 /** LLM 抽取最大重试次数 */
@@ -75,12 +81,12 @@ export async function intentAgent(state: TravelState) {
   // 无输入文本时（如服务层已预抽取字段），直接使用已有字段，不重复抽取
   if (!naturalLanguage && history.length === 0) {
     const missing: string[] = [];
-    if (!request.destination) missing.push('目的地');
-    if (!request.days || request.days <= 0) missing.push('出行天数');
-    if (!request.travelDate) missing.push('出行日期');
+    if (!request.destination) missing.push('destination');
+    if (!request.days || request.days <= 0) missing.push('days');
+    if (!request.travelDate) missing.push('travelDate');
 
     if (missing.length > 0) {
-      const question = `请补充以下信息：${missing.join('、')}`;
+      const question = generateNaturalQuestion(missing);
       return {
         needClarification: true,
         clarificationQuestion: question,
@@ -120,12 +126,14 @@ export async function intentAgent(state: TravelState) {
 
   // 检查必填字段
   const missing: string[] = [];
-  if (!merged.destination) missing.push('目的地');
-  if (!merged.days || merged.days <= 0) missing.push('出行天数');
-  if (!merged.travelDate) missing.push('出行日期');
+  if (!merged.destination) missing.push('destination');
+  if (!merged.days || merged.days <= 0) missing.push('days');
+  if (!merged.travelDate) missing.push('travelDate');
 
   if (missing.length > 0) {
-    const question = `请补充以下信息：${missing.join('、')}`;
+    // 优先使用 LLM 生成的自然追问，mock 模式或 LLM 未生成时用模板
+    const question =
+      extracted.clarificationQuestion || generateNaturalQuestion(missing);
     return {
       needClarification: true,
       clarificationQuestion: question,
@@ -311,6 +319,7 @@ function formatDate(d: Date): string {
 
 /**
  * 解析相对日期：明天、后天、大后天、下周一~日、本周/这周X
+ * 支持独立星期表达（如"周五"）结合上下文"下周/本周"推断
  * 返回 YYYY-MM-DD 格式字符串，无法解析返回 undefined
  */
 function parseRelativeDate(text: string): string | undefined {
@@ -328,32 +337,49 @@ function parseRelativeDate(text: string): string | undefined {
     return formatDate(new Date(today.getTime() + 1 * 86400000));
   }
 
-  // 下周一~日 / 本周X / 这周X
+  // 下周一~日 / 本周X / 这周X（完整表达优先）
   const weekMatch = text.match(/(下|本|这)(?:周|星期)([一二三四五六日天])/);
   if (weekMatch) {
     const scope = weekMatch[1]; // 下 / 本 / 这
     const targetDay = WEEK_DAY_MAP[weekMatch[2]];
-    const currentDay = today.getDay();
+    return calcWeekdayDate(today, targetDay, scope);
+  }
 
-    if (scope === '下') {
-      // 下周：从下周一开始算
-      const daysToNextMonday = (8 - currentDay) % 7 || 7;
-      const nextMonday = new Date(today.getTime() + daysToNextMonday * 86400000);
-      const offset = (targetDay - 1 + 7) % 7;
-      return formatDate(new Date(nextMonday.getTime() + offset * 86400000));
-    } else {
-      // 本周/这周：本周内对应星期几，已过则取下一周
-      const diff = targetDay - currentDay;
-      const target = new Date(today.getTime() + diff * 86400000);
-      if (target < today) {
-        // 已过本周该日，取下周
-        return formatDate(new Date(target.getTime() + 7 * 86400000));
-      }
-      return formatDate(target);
-    }
+  // 独立星期表达：周X / 星期X（无"下/本/这"前缀）
+  // 结合上下文推断 scope：若上下文中出现"下周"则为下周，否则本周
+  const standaloneWeekMatch = text.match(/(?:周|星期)([一二三四五六日天])/);
+  if (standaloneWeekMatch) {
+    const targetDay = WEEK_DAY_MAP[standaloneWeekMatch[1]];
+    const scope = text.includes('下周') ? '下' : '本';
+    return calcWeekdayDate(today, targetDay, scope);
   }
 
   return undefined;
+}
+
+/** 计算指定 scope（下/本）的星期几对应的日期 */
+function calcWeekdayDate(
+  today: Date,
+  targetDay: number,
+  scope: '下' | '本',
+): string {
+  const currentDay = today.getDay();
+
+  if (scope === '下') {
+    // 下周：从下周一开始算
+    const daysToNextMonday = (8 - currentDay) % 7 || 7;
+    const nextMonday = new Date(today.getTime() + daysToNextMonday * 86400000);
+    const offset = (targetDay - 1 + 7) % 7;
+    return formatDate(new Date(nextMonday.getTime() + offset * 86400000));
+  } else {
+    // 本周：本周内对应星期几，已过则取下一周
+    const diff = targetDay - currentDay;
+    const target = new Date(today.getTime() + diff * 86400000);
+    if (target < today) {
+      return formatDate(new Date(target.getTime() + 7 * 86400000));
+    }
+    return formatDate(target);
+  }
 }
 
 /**
@@ -415,6 +441,45 @@ async function extractWithLLM(
     `[IntentAgent] LLM 抽取重试 ${LLM_EXTRACT_MAX_RETRIES} 次后仍失败：${lastError?.message ?? '未知错误'}，返回空结果触发追问`,
   );
   return {};
+}
+
+/**
+ * 根据缺失字段生成自然、口语化的追问（mock 模式使用）
+ * @param missing 缺失的字段名数组（destination / days / travelDate）
+ */
+function generateNaturalQuestion(missing: string[]): string {
+  const templates: Record<string, string[]> = {
+    destination: [
+      '这次想去哪里玩呀？',
+      '打算去哪座城市呢？',
+      '目的地定好了吗，想去哪里呀？',
+      '这次旅行的目的地是哪里呢？',
+    ],
+    days: [
+      '打算玩几天呀？',
+      '计划出行几天呢？',
+      '这次准备玩几天？',
+      '行程安排几天比较合适？',
+    ],
+    travelDate: [
+      '打算什么时候出发呀？',
+      '计划哪天出发呢？',
+      '出行日期定了吗？',
+      '准备什么时候启程？',
+    ],
+  };
+
+  // 随机选择模板，增加多样性
+  const pick = (arr: string[]) =>
+    arr[Math.floor(Math.random() * arr.length)];
+
+  if (missing.length === 1) {
+    return pick(templates[missing[0]] ?? templates.destination);
+  }
+
+  // 多个字段缺失时，组合成自然问句
+  const questions = missing.map((m) => pick(templates[m] ?? templates.destination));
+  return questions.join('另外，');
 }
 
 /**

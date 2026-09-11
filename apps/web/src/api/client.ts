@@ -306,16 +306,19 @@ function parseSSEEvent(raw: string): { event: string; data: any } | null {
  * 通过回调实时推送节点完成事件，最终返回完整规划结果或追问结果。
  *
  * Phase17 新增：支持 clarification 事件，返回追问结果。
+ * Phase17 优化：支持 signal 参数，可中断请求（用户中途改计划时取消）。
  */
 export async function generatePlanStream(
   request: TravelRequest,
   mode: RunMode,
   callbacks?: StreamCallbacks,
+  signal?: AbortSignal,
 ): Promise<PlanStreamResult> {
   const res = await fetch(`${API_BASE}/plan/stream?mode=${mode}`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(request),
+    signal,
   });
 
   if (!res.ok || !res.body) {
