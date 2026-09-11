@@ -45,9 +45,9 @@ export function PlansPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in-up">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">历史规划记录</h1>
+        <h1 className="font-serif text-2xl font-semibold tracking-tight">历史规划记录</h1>
       </div>
 
       {/* 搜索栏 */}

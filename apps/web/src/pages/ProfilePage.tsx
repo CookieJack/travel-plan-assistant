@@ -1,6 +1,7 @@
 /**
  * Phase16 新增：个人设置页面
  * 修改用户默认出行风格、预算上限、偏好
+ * 设计改造：Wanderlust Editorial 风格
  */
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -54,91 +55,110 @@ export default function ProfilePage() {
 
   if (loading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-slate-500">
+      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
         加载中...
       </div>
     );
   }
 
+  const inputClass =
+    'flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1';
+
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="max-w-2xl mx-auto px-4 py-10">
-        <h1 className="text-2xl font-bold text-slate-800 mb-1">个人设置</h1>
-        <p className="text-sm text-slate-500 mb-6">
-          当前用户：<span className="font-medium text-slate-700">{user.username}</span>
+    <div className="mx-auto max-w-2xl animate-fade-in-up">
+      <div className="mb-6">
+        <h1 className="font-serif text-2xl font-semibold tracking-tight text-foreground">
+          个人设置
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          当前用户：
+          <span className="font-medium text-foreground">{user.username}</span>
         </p>
-
-        <form onSubmit={handleSave} className="bg-white rounded-2xl shadow-sm p-6 space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              默认出行风格
-            </label>
-            <select
-              value={prefs.defaultStyle ?? ''}
-              onChange={(e) =>
-                setPrefs((p) => ({ ...p, defaultStyle: e.target.value || null }))
-              }
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">不设置</option>
-              {STYLE_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-slate-400 mt-1">生成规划时自动带入，可在表单中覆盖</p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              默认预算上限（元）
-            </label>
-            <input
-              type="number"
-              min={0}
-              value={prefs.defaultBudget ?? ''}
-              onChange={(e) =>
-                setPrefs((p) => ({
-                  ...p,
-                  defaultBudget: e.target.value ? Number(e.target.value) : null,
-                }))
-              }
-              placeholder="例如 8000"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              默认偏好
-            </label>
-            <input
-              type="text"
-              value={prefs.defaultPreference ?? ''}
-              onChange={(e) =>
-                setPrefs((p) => ({
-                  ...p,
-                  defaultPreference: e.target.value || null,
-                }))
-              }
-              placeholder="例如 美食、自然风光、亲子..."
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          {msg && <p className="text-sm text-green-600 bg-green-50 px-3 py-2 rounded-lg">{msg}</p>}
-          {err && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{err}</p>}
-
-          <button
-            type="submit"
-            disabled={saving}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white font-medium py-2.5 px-6 rounded-lg transition"
-          >
-            {saving ? '保存中...' : '保存偏好'}
-          </button>
-        </form>
       </div>
+
+      <form
+        onSubmit={handleSave}
+        className="space-y-5 rounded-2xl border border-border/60 bg-card/80 p-6 shadow-sm backdrop-blur-sm"
+      >
+        <div>
+          <label className="mb-2 block text-sm font-medium text-foreground">
+            默认出行风格
+          </label>
+          <select
+            value={prefs.defaultStyle ?? ''}
+            onChange={(e) =>
+              setPrefs((p) => ({ ...p, defaultStyle: e.target.value || null }))
+            }
+            className={inputClass}
+          >
+            <option value="">不设置</option>
+            {STYLE_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-muted-foreground">
+            生成规划时自动带入，可在对话中覆盖
+          </p>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium text-foreground">
+            默认预算上限（元）
+          </label>
+          <input
+            type="number"
+            min={0}
+            value={prefs.defaultBudget ?? ''}
+            onChange={(e) =>
+              setPrefs((p) => ({
+                ...p,
+                defaultBudget: e.target.value ? Number(e.target.value) : null,
+              }))
+            }
+            placeholder="例如 8000"
+            className={inputClass}
+          />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium text-foreground">
+            默认偏好
+          </label>
+          <input
+            type="text"
+            value={prefs.defaultPreference ?? ''}
+            onChange={(e) =>
+              setPrefs((p) => ({
+                ...p,
+                defaultPreference: e.target.value || null,
+              }))
+            }
+            placeholder="例如 美食、自然风光、亲子..."
+            className={inputClass}
+          />
+        </div>
+
+        {msg && (
+          <p className="rounded-lg border border-green-600/20 bg-green-500/10 px-3 py-2 text-sm text-green-700">
+            {msg}
+          </p>
+        )}
+        {err && (
+          <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {err}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={saving}
+          className="rounded-lg bg-primary px-6 py-2.5 font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 hover:shadow-md disabled:opacity-50"
+        >
+          {saving ? '保存中...' : '保存偏好'}
+        </button>
+      </form>
     </div>
   );
 }

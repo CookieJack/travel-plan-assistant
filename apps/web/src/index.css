@@ -1,30 +1,207 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: oklch(1 0 0);
-  --color-foreground: oklch(0.145 0 0);
-  --color-card: oklch(1 0 0);
-  --color-card-foreground: oklch(0.145 0 0);
-  --color-popover: oklch(1 0 0);
-  --color-popover-foreground: oklch(0.145 0 0);
-  --color-primary: oklch(0.205 0 0);
-  --color-primary-foreground: oklch(0.985 0 0);
-  --color-secondary: oklch(0.97 0 0);
-  --color-secondary-foreground: oklch(0.205 0 0);
-  --color-muted: oklch(0.97 0 0);
-  --color-muted-foreground: oklch(0.556 0 0);
-  --color-accent: oklch(0.97 0 0);
-  --color-accent-foreground: oklch(0.205 0 0);
-  --color-destructive: oklch(0.577 0.245 27.325);
-  --color-destructive-foreground: oklch(0.985 0 0);
-  --color-border: oklch(0.922 0 0);
-  --color-input: oklch(0.922 0 0);
-  --color-ring: oklch(0.708 0 0);
-  --radius: 0.5rem;
+  /* —— 色彩系统：Wanderlust Editorial —— */
+  --color-background: oklch(0.978 0.012 88);
+  --color-foreground: oklch(0.26 0.022 56);
+  --color-card: oklch(0.995 0.006 90);
+  --color-card-foreground: oklch(0.26 0.022 56);
+  --color-popover: oklch(0.995 0.006 90);
+  --color-popover-foreground: oklch(0.26 0.022 56);
+  --color-primary: oklch(0.56 0.16 38);
+  --color-primary-foreground: oklch(0.985 0.01 90);
+  --color-secondary: oklch(0.94 0.03 80);
+  --color-secondary-foreground: oklch(0.32 0.04 45);
+  --color-muted: oklch(0.95 0.014 82);
+  --color-muted-foreground: oklch(0.56 0.02 60);
+  --color-accent: oklch(0.48 0.10 210);
+  --color-accent-foreground: oklch(0.985 0.01 90);
+  --color-destructive: oklch(0.55 0.22 25);
+  --color-destructive-foreground: oklch(0.985 0.01 90);
+  --color-border: oklch(0.88 0.018 82);
+  --color-input: oklch(0.88 0.018 82);
+  --color-ring: oklch(0.56 0.16 38);
+
+  --radius: 0.75rem;
+
+  /* 字体 */
+  --font-sans: "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Fraunces", "Noto Serif SC", ui-serif, Georgia, serif;
 }
 
+/* —— 基础全局样式 —— */
 body {
   background-color: var(--color-background);
   color: var(--color-foreground);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 标题使用衬线字体，营造杂志编辑感 */
+h1, h2, h3, h4, h5, h6, .font-serif {
+  font-family: var(--font-serif);
+  letter-spacing: -0.01em;
+}
+
+/* —— 背景氛围层：暖光晕 + 噪点 —— */
+.app-bg {
+  position: relative;
+  min-height: 100vh;
+  background-color: var(--color-background);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, oklch(0.78 0.12 60 / 0.18), transparent 60%),
+    radial-gradient(ellipse 60% 45% at 100% 0%, oklch(0.55 0.12 210 / 0.10), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 0% 100%, oklch(0.65 0.14 40 / 0.08), transparent 55%);
+}
+
+.app-bg::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.4;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  mix-blend-mode: soft-light;
+}
+
+.app-bg > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* —— 动画关键帧 —— */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 oklch(0.56 0.16 38 / 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 8px oklch(0.56 0.16 38 / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 oklch(0.56 0.16 38 / 0);
+  }
+}
+
+@keyframes float-blob {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(10px, -15px) scale(1.05); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* 动画工具类 */
+.animate-fade-in-up {
+  animation: fade-in-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.animate-fade-in {
+  animation: fade-in 0.4s ease both;
+}
+.animate-slide-in-right {
+  animation: slide-in-right 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.animate-slide-in-left {
+  animation: slide-in-left 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.animate-pulse-ring {
+  animation: pulse-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* 自定义滚动条 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
+  border-radius: 9999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-muted-foreground);
+}
+
+/* shadcn 组件微调：Tabs 下划线指示器风格 */
+.tabs-list-editorial {
+  background: transparent;
+  border-bottom: 1px solid var(--color-border);
+  padding: 0;
+  height: auto;
+  gap: 0;
+}
+.tabs-list-editorial [data-state="active"] {
+  background: transparent !important;
+  color: var(--color-foreground) !important;
+  box-shadow: none !important;
+  position: relative;
+}
+.tabs-list-editorial [data-state="active"]::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 12px;
+  right: 12px;
+  height: 2px;
+  background: var(--color-primary);
+  border-radius: 9999px;
+}
+
+/* 加载骨架 shimmer */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-muted) 0%,
+    var(--color-secondary) 50%,
+    var(--color-muted) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
 }

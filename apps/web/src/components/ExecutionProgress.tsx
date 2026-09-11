@@ -1,4 +1,4 @@
-import { CheckCircle2, Loader2, Circle } from 'lucide-react';
+import { CheckCircle2, Circle } from 'lucide-react';
 import type { ToolCallRecord } from '@travel/shared';
 import { cn } from '@/lib/utils';
 import { ToolCallList } from './ToolCallList';
@@ -61,7 +61,7 @@ export function ExecutionProgress({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold mb-3">执行进度</h2>
+        <h2 className="font-serif text-lg font-semibold mb-3">执行进度</h2>
         <div className="space-y-4">
           {NODE_GROUPS.map((group, gi) => (
             <div key={gi}>
@@ -83,7 +83,7 @@ export function ExecutionProgress({
 
       {toolCalls.length > 0 && (
         <div>
-          <h2 className="text-lg font-semibold mb-3">工具调用</h2>
+          <h2 className="font-serif text-lg font-semibold mb-3">工具调用</h2>
           <ToolCallList toolCalls={toolCalls} />
         </div>
       )}
@@ -96,24 +96,31 @@ function NodeItem({ label, status }: { label: string; status: NodeStatus }) {
   return (
     <div
       className={cn(
-        'flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors',
-        status === 'done' && 'border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950',
-        status === 'running' && 'border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950',
-        status === 'pending' && 'border-border bg-muted/30',
+        'flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm transition-all duration-300',
+        status === 'done' &&
+          'border-green-600/30 bg-green-500/10 text-green-700',
+        status === 'running' &&
+          'border-primary/40 bg-primary/10 text-foreground shadow-sm',
+        status === 'pending' &&
+          'border-border/60 bg-muted/30 text-muted-foreground',
       )}
     >
       {status === 'done' && (
-        <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+        <CheckCircle2 className="h-4 w-4 text-green-600" />
       )}
       {status === 'running' && (
-        <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
+        <span className="relative flex h-3 w-3">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/40" />
+          <span className="relative inline-flex h-3 w-3 rounded-full bg-primary" />
+        </span>
       )}
       {status === 'pending' && (
-        <Circle className="h-4 w-4 text-muted-foreground" />
+        <Circle className="h-4 w-4 text-muted-foreground/50" />
       )}
       <span
         className={cn(
-          status === 'pending' && 'text-muted-foreground',
+          'font-medium',
+          status === 'running' && 'text-foreground',
         )}
       >
         {label}

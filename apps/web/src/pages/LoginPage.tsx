@@ -1,8 +1,10 @@
 /**
  * Phase16 新增：登录/注册页面
+ * 设计改造：Wanderlust Editorial 风格
  */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Compass, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function LoginPage() {
@@ -33,80 +35,102 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8">
-        <h1 className="text-2xl font-bold text-slate-800 mb-2">
-          {mode === 'login' ? '登录' : '注册'}
-        </h1>
-        <p className="text-sm text-slate-500 mb-6">
-          {mode === 'login'
-            ? '登录后可保存规划与个性化偏好'
-            : '创建账号，开启个性化旅行规划'}
-        </p>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">用户名</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-              minLength={1}
-              maxLength={50}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="请输入用户名"
-            />
+    <div className="app-bg flex min-h-screen items-center justify-center px-4">
+      <div className="w-full max-w-md">
+        {/* 品牌标识 */}
+        <div className="mb-8 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-lg">
+            <Compass className="h-7 w-7" />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">密码</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={6}
-              maxLength={100}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="至少 6 位"
-            />
+          <h1 className="font-serif text-3xl font-semibold tracking-tight text-foreground">
+            Wanderlust
+          </h1>
+          <p className="mt-2 flex items-center justify-center gap-1.5 text-sm text-muted-foreground">
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            开启你的下一段旅程
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-border/60 bg-card/90 p-8 shadow-xl backdrop-blur-sm">
+          <h2 className="font-serif text-xl font-semibold text-foreground">
+            {mode === 'login' ? '欢迎回来' : '创建账号'}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {mode === 'login'
+              ? '登录后可保存规划与个性化偏好'
+              : '开启个性化旅行规划之旅'}
+          </p>
+
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
+                用户名
+              </label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                minLength={1}
+                maxLength={50}
+                className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+                placeholder="请输入用户名"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
+                密码
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={6}
+                maxLength={100}
+                className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+                placeholder="至少 6 位"
+              />
+            </div>
+
+            {error && (
+              <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {error}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full rounded-lg bg-primary py-2.5 font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 hover:shadow-md disabled:opacity-50"
+            >
+              {submitting ? '处理中...' : mode === 'login' ? '登录' : '注册'}
+            </button>
+          </form>
+
+          <div className="mt-6 text-center text-sm text-muted-foreground">
+            {mode === 'login' ? (
+              <>
+                还没有账号？
+                <button
+                  onClick={() => setMode('register')}
+                  className="ml-1 font-medium text-primary hover:underline"
+                >
+                  立即注册
+                </button>
+              </>
+            ) : (
+              <>
+                已有账号？
+                <button
+                  onClick={() => setMode('login')}
+                  className="ml-1 font-medium text-primary hover:underline"
+                >
+                  去登录
+                </button>
+              </>
+            )}
           </div>
-
-          {error && (
-            <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
-          )}
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white font-medium py-2.5 rounded-lg transition"
-          >
-            {submitting ? '处理中...' : mode === 'login' ? '登录' : '注册'}
-          </button>
-        </form>
-
-        <div className="mt-6 text-center text-sm text-slate-500">
-          {mode === 'login' ? (
-            <>
-              还没有账号？
-              <button
-                onClick={() => setMode('register')}
-                className="text-blue-600 hover:underline ml-1"
-              >
-                立即注册
-              </button>
-            </>
-          ) : (
-            <>
-              已有账号？
-              <button
-                onClick={() => setMode('login')}
-                className="text-blue-600 hover:underline ml-1"
-              >
-                去登录
-              </button>
-            </>
-          )}
         </div>
       </div>
     </div>

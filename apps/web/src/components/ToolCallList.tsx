@@ -30,15 +30,15 @@ function ToolCallItem({ record, index }: { record: ToolCallRecord; index: number
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <li className="rounded-md border bg-card p-3">
+    <li className="rounded-xl border border-border/60 bg-card p-3 transition-colors hover:border-primary/30">
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <Wrench className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <span className="text-xs text-muted-foreground">#{index}</span>
-          <span className="font-medium text-sm">{record.toolName}</span>
-          <span className="text-xs text-muted-foreground">· {record.agent}</span>
+        <div className="flex min-w-0 items-center gap-2">
+          <Wrench className="h-4 w-4 shrink-0 text-primary" />
+          <span className="shrink-0 text-xs text-muted-foreground">#{index}</span>
+          <span className="truncate font-medium text-sm">{record.toolName}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">· {record.agent}</span>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex shrink-0 items-center gap-2">
           <ModeBadge mode={record.mode} />
           <span className="text-xs text-muted-foreground">
             {new Date(record.timestamp).toLocaleTimeString('zh-CN')}
@@ -46,14 +46,14 @@ function ToolCallItem({ record, index }: { record: ToolCallRecord; index: number
         </div>
       </div>
 
-      <div className="mt-2 text-xs text-muted-foreground line-clamp-2">
+      <div className="mt-2 line-clamp-2 text-xs text-muted-foreground">
         {record.resultSummary}
       </div>
 
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="mt-2 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        className="mt-2 flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-primary"
       >
         {expanded ? (
           <ChevronDown className="h-3 w-3" />
@@ -64,7 +64,7 @@ function ToolCallItem({ record, index }: { record: ToolCallRecord; index: number
       </button>
 
       {expanded && (
-        <pre className="mt-2 overflow-x-auto rounded bg-muted p-2 text-xs">
+        <pre className="mt-2 overflow-x-auto rounded-lg bg-muted p-3 text-xs">
           {JSON.stringify(record.args, null, 2)}
         </pre>
       )}
@@ -77,10 +77,10 @@ function ModeBadge({ mode }: { mode: ToolCallRecord['mode'] }) {
   return (
     <span
       className={cn(
-        'rounded px-1.5 py-0.5 text-[10px] font-medium',
+        'rounded-full px-2 py-0.5 text-[10px] font-medium',
         mode === 'llm'
-          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-          : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+          ? 'bg-primary/10 text-primary'
+          : 'bg-muted text-muted-foreground',
       )}
     >
       {mode}

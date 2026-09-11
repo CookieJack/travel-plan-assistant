@@ -197,23 +197,25 @@ export function PlanPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in-up">
       <div>
-        <h1 className="text-2xl font-bold mb-2">旅行规划助手</h1>
-        <p className="text-muted-foreground text-sm">
-          用自然语言描述您的旅行需求，我会为您生成完整的规划方案
+        <h1 className="font-serif text-3xl font-semibold tracking-tight text-foreground">
+          旅行规划助手
+        </h1>
+        <p className="mt-1.5 text-sm text-muted-foreground">
+          用自然语言描述你的旅行需求，AI 将为你生成完整的机票、酒店、行程与预算方案
         </p>
       </div>
 
       {error && (
-        <div className="rounded-md bg-destructive/10 p-4 text-destructive">
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive animate-fade-in">
           {error}
         </div>
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* 左侧：对话面板 */}
-        <div className="border rounded-lg p-4">
+        <div className="rounded-2xl border border-border/60 bg-card/80 p-5 shadow-sm backdrop-blur-sm">
           <ChatPanel
             messages={messages}
             mode={mode}
@@ -228,8 +230,15 @@ export function PlanPage() {
         <div>
           {/* 意图/追问阶段：仅显示提示，不显示执行进度 */}
           {loading && !planningStarted && !error && (
-            <div className="flex items-center justify-center h-64 text-muted-foreground">
-              正在分析您的需求...
+            <div className="flex h-64 flex-col items-center justify-center rounded-2xl border border-border/60 bg-card/60 text-muted-foreground">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                <span className="flex gap-1">
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-primary/70 [animation-delay:0ms]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-primary/70 [animation-delay:150ms]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-primary/70 [animation-delay:300ms]" />
+                </span>
+              </div>
+              <p className="text-sm">正在分析你的需求...</p>
             </div>
           )}
 
@@ -263,8 +272,11 @@ export function PlanPage() {
           )}
 
           {!loading && !revising && !error && !result && (
-            <div className="flex items-center justify-center h-64 text-muted-foreground">
-              在左侧输入旅行需求以开始规划
+            <div className="flex h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-border/70 bg-card/30 text-center">
+              <div className="mb-3 text-3xl">🗺️</div>
+              <p className="text-sm text-muted-foreground">
+                在左侧输入旅行需求以开始规划
+              </p>
             </div>
           )}
         </div>
