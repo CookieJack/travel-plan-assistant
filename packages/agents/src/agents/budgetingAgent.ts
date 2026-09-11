@@ -37,10 +37,45 @@ const BUDGET_SYSTEM_PROMPT = `你是预算规划智能体 BudgetingAgent。
 
 /**
  * 预算Agent节点函数
- * 输入：全局状态（需包含 flights、hotels、activities）
+ * 输入：全局状态（需包含 flights、hotels、activities 或 cityPlans）
  * 输出：总预算与费用明细（写入 state.budget）
  */
 export async function budgetingAgent(state: TravelState) {
+  // Phase15 新增：多城市预算汇总
+  if (state.cityPlans && state.cityPlans.length > 1) {
+    if (!isLLMMode()) {
+      return computeMultiCityBudget(state);
+    }
+    // llm 模式：传入所有城市结果
+    try {
+      const userContent = JSON.stringify({
+        days: state.request.days,
+        budget_limit: state.request.budget_limit ?? null,
+        cityPlans: state.cityPlans,
+      });
+      const data = await callLLMJson(
+        BUDGET_SYSTEM_PROMPT,
+        userContent,
+        validateBudgetOutput,
+        2,
+        'BudgetingAgent',
+      );
+      return {
+        budget: {
+          agent: 'BudgetingAgent' as const,
+          total: typeof data.total === 'number' ? data.total : 0,
+          breakdown: Array.isArray(data.breakdown) ? data.breakdown : [],
+          overBudget: Boolean(data.overBudget),
+          warning: data.warning || undefined,
+          suggestions: data.suggestions || undefined,
+        },
+      };
+    } catch (err) {
+      console.error('[BudgetingAgent] 多城市 LLM 调用失败，回退 mock：', (err as Error).message);
+      return computeMultiCityBudget(state);
+    }
+  }
+
   // mock 模式：沿用 phase1 本地计算逻辑
   if (!isLLMMode()) {
     return computeBudgetMock(state);
@@ -139,6 +174,88 @@ function computeBudgetMock(state: TravelState) {
       '建议选择更低价的机票方案（红眼航班/折扣经济舱）',
       '建议下调酒店档次，选择经济型酒店或减少住宿天数',
       '建议精简游玩活动，优先免费景点与低消费项目',
+    ];
+  }
+
+  return {
+    budget: {
+      agent: 'BudgetingAgent' as const,
+      total,
+      breakdown,
+      overBudget,
+      warning,
+      suggestions,
+    },
+  };
+}
+
+/** Phase15 新增：多城市 mock 模式下的本地预算计算（汇总所有城市 + 城际交通） */
+function computeMultiCityBudget(state: TravelState) {
+  const breakdown: CostItem[] = [];
+  const cityPlans = state.cityPlans!;
+
+  // 每个城市的费用
+  for (const city of cityPlans) {
+    // 机票：取首个方案 × 2（往返）
+    if (city.flights?.options?.length) {
+      const flight = city.flights.options[0];
+      breakdown.push({
+        category: `机票(${city.city})`,
+        description: `${flight.airline} ${flight.flightNo} 往返`,
+        amount: flight.price * 2,
+      });
+    }
+    // 酒店：取首个方案 × (days-1) 晚
+    if (city.hotels?.options?.length) {
+      const hotel = city.hotels.options[0];
+      const nights = Math.max(city.days - 1, 1);
+      breakdown.push({
+        category: `酒店(${city.city})`,
+        description: `${hotel.name} ${hotel.roomType} × ${nights}晚`,
+        amount: hotel.pricePerNight * nights,
+      });
+    }
+    // 活动：所有行程活动费用总和
+    if (city.activities?.itinerary?.length) {
+      const cost = city.activities.itinerary.reduce(
+        (sum, day) => sum + day.activities.reduce((s, a) => s + a.cost, 0),
+        0,
+      );
+      breakdown.push({
+        category: `游玩活动(${city.city})`,
+        description: `${city.activities.itinerary.length}天行程活动费用`,
+        amount: cost,
+      });
+    }
+  }
+
+  // 城际交通：城市间交通费（mock：每段 500 元）
+  const interCitySegments = cityPlans.length - 1;
+  if (interCitySegments > 0) {
+    breakdown.push({
+      category: '城际交通',
+      description: `${interCitySegments} 段城市间交通`,
+      amount: interCitySegments * 500,
+    });
+  }
+
+  const total = breakdown.reduce((sum, item) => sum + item.amount, 0);
+
+  // 超支判断
+  const budgetLimit = state.request.budget_limit;
+  let overBudget = false;
+  let warning: string | undefined;
+  let suggestions: string[] | undefined;
+
+  if (typeof budgetLimit === 'number' && total > budgetLimit) {
+    overBudget = true;
+    const exceed = total - budgetLimit;
+    warning = `预估总花费 ¥${total} 超出预算上限 ¥${budgetLimit}，超支 ¥${exceed}。`;
+    suggestions = [
+      '建议选择更低价的机票方案（红眼航班/折扣经济舱）',
+      '建议下调酒店档次，选择经济型酒店或减少住宿天数',
+      '建议精简游玩活动，优先免费景点与低消费项目',
+      '建议优化城市间交通方式（高铁二等座/特价机票）',
     ];
   }
 

@@ -50,6 +50,34 @@ export interface PlanDetail extends TravelState {
 /** API 基础路径（Vite dev server 代理 /api 到后端） */
 const API_BASE = '/api';
 
+/** localStorage 中存储 Token 的键名 */
+const TOKEN_KEY = 'travel_auth_token';
+
+/** 获取当前登录 Token（未登录返回 null） */
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+/** 保存 Token */
+export function setToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+/** 清除 Token（登出） */
+export function clearToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+/** 构造带 Authorization 的请求头 */
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = { ...(extra ?? {}) };
+  const token = getToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 /** 错误响应 */
 interface ErrorResponse {
   error: string;
@@ -67,7 +95,7 @@ export async function generatePlan(
   const url = `${API_BASE}/plan?mode=${mode}&format=json`;
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(request),
   });
 
@@ -96,7 +124,9 @@ export async function listPlans(
     params.set('destination', destination.trim());
   }
 
-  const res = await fetch(`${API_BASE}/plans?${params.toString()}`);
+  const res = await fetch(`${API_BASE}/plans?${params.toString()}`, {
+    headers: authHeaders(),
+  });
   const data = await res.json();
   if (!res.ok) {
     const err = data as ErrorResponse;
@@ -113,7 +143,9 @@ export async function listPlans(
  * 需转换为包含 request 对象的格式，以兼容 PlanResult 组件。
  */
 export async function getPlanById(id: string): Promise<PlanDetail> {
-  const res = await fetch(`${API_BASE}/plans/${id}`);
+  const res = await fetch(`${API_BASE}/plans/${id}`, {
+    headers: authHeaders(),
+  });
   const data = await res.json();
   if (!res.ok) {
     const err = data as ErrorResponse;
@@ -140,8 +172,93 @@ export async function getPlanById(id: string): Promise<PlanDetail> {
 }
 
 // ============================================================
-// Phase11 新增：SSE 流式规划
+// Phase14 新增：规划修订 API
 // ============================================================
+
+/** 修订请求 */
+export interface ReviseRequest {
+  feedback: string;
+  mode?: RunMode;
+}
+
+/**
+ * 非流式修订规划
+ * POST /api/plans/:id/revise
+ */
+export async function revisePlan(
+  planId: string,
+  body: ReviseRequest,
+): Promise<JsonPlanResponse> {
+  const res = await fetch(`${API_BASE}/plans/${planId}/revise`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    const err = data as ErrorResponse;
+    throw new Error(err.error || '修订规划失败');
+  }
+  return data as JsonPlanResponse;
+}
+
+/**
+ * 流式修订规划
+ * POST /api/plans/:id/revise/stream
+ *
+ * 复用 SSE 解析逻辑，通过回调实时推送节点完成事件。
+ */
+export async function revisePlanStream(
+  planId: string,
+  body: ReviseRequest,
+  callbacks?: StreamCallbacks,
+): Promise<JsonPlanResponse> {
+  const res = await fetch(`${API_BASE}/plans/${planId}/revise/stream`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok || !res.body) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as ErrorResponse).error || '修订规划失败');
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let finalResult: JsonPlanResponse | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split('\n\n');
+    buffer = events.pop() || '';
+
+    for (const raw of events) {
+      const parsed = parseSSEEvent(raw);
+      if (!parsed) continue;
+
+      switch (parsed.event) {
+        case 'node_complete':
+          callbacks?.onNodeComplete?.(parsed.data.node, parsed.data.toolCalls);
+          break;
+        case 'cache_hit':
+        case 'complete':
+          finalResult = parsed.data.result as JsonPlanResponse;
+          break;
+        case 'error':
+          throw new Error(parsed.data.message || '修订规划失败');
+      }
+    }
+  }
+
+  if (!finalResult) throw new Error('未收到修订结果');
+  return finalResult;
+}
 
 /** 流式规划回调 */
 export interface StreamCallbacks {
@@ -183,7 +300,7 @@ export async function generatePlanStream(
 ): Promise<JsonPlanResponse> {
   const res = await fetch(`${API_BASE}/plan/stream?mode=${mode}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(request),
   });
 
@@ -226,4 +343,113 @@ export async function generatePlanStream(
 
   if (!finalResult) throw new Error('未收到规划结果');
   return finalResult;
+}
+
+// ============================================================
+// Phase16 新增：认证 & 用户偏好 API
+// ============================================================
+
+/** 用户信息 */
+export interface UserInfo {
+  id: string;
+  username: string;
+  defaultStyle: string | null;
+  defaultBudget: number | null;
+  defaultPreference: string | null;
+}
+
+/** 用户默认偏好 */
+export interface UserPreferences {
+  defaultStyle: string | null;
+  defaultBudget: number | null;
+  defaultPreference: string | null;
+}
+
+/**
+ * 用户注册
+ * POST /api/auth/register
+ */
+export async function register(
+  username: string,
+  password: string,
+): Promise<{ token: string; user: { id: string; username: string } }> {
+  const res = await fetch(`${API_BASE}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error((data as ErrorResponse).error || '注册失败');
+  }
+  return data;
+}
+
+/**
+ * 用户登录
+ * POST /api/auth/login
+ */
+export async function login(
+  username: string,
+  password: string,
+): Promise<{ token: string; user: { id: string; username: string } }> {
+  const res = await fetch(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error((data as ErrorResponse).error || '登录失败');
+  }
+  return data;
+}
+
+/**
+ * 获取当前登录用户信息
+ * GET /api/auth/me
+ */
+export async function getCurrentUser(): Promise<UserInfo> {
+  const res = await fetch(`${API_BASE}/auth/me`, {
+    headers: authHeaders(),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error((data as ErrorResponse).error || '获取用户信息失败');
+  }
+  return data as UserInfo;
+}
+
+/**
+ * 获取用户默认偏好
+ * GET /api/user/preferences
+ */
+export async function getPreferences(): Promise<UserPreferences> {
+  const res = await fetch(`${API_BASE}/user/preferences`, {
+    headers: authHeaders(),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error((data as ErrorResponse).error || '获取偏好失败');
+  }
+  return data as UserPreferences;
+}
+
+/**
+ * 更新用户默认偏好
+ * PUT /api/user/preferences
+ */
+export async function updatePreferences(
+  prefs: Partial<UserPreferences>,
+): Promise<UserPreferences> {
+  const res = await fetch(`${API_BASE}/user/preferences`, {
+    method: 'PUT',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(prefs),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error((data as ErrorResponse).error || '更新偏好失败');
+  }
+  return data as UserPreferences;
 }

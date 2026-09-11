@@ -2,15 +2,16 @@
  * 旅行规划服务
  * 封装 Agent 调用，处理 mode/format，不修改 Agent 内部逻辑
  */
-import { buildTravelGraph } from '@travel/agents';
+import { buildTravelGraph, budgetingAgent, supervisorAgent } from '@travel/agents';
 import { setMode } from '@travel/llm';
 import {
   formatPlanMarkdown,
   type TravelRequest,
   type TravelState,
+  type CityPlan,
 } from '@travel/shared';
 import type { OutputFormat, RunMode } from '../types/api.js';
-import { savePlan } from './dbService.js';
+import { savePlan, getPlanById, getUserById, type SavePlanMeta } from './dbService.js';
 import {
   cacheGet,
   cacheSet,
@@ -42,16 +43,43 @@ export type SSEEvent =
 
 /**
  * 持久化规划结果到数据库（Phase11 抽取：供 generatePlan 与 generatePlanStream 共用）
+ * Phase14 扩展：支持传入 parentId/feedback 记录修订关系
  */
-async function persistPlan(state: TravelState, mode: RunMode): Promise<PersistMeta> {
-  let meta: PersistMeta = { id: '', createdAt: new Date().toISOString() };
+async function persistPlan(
+  state: TravelState,
+  mode: RunMode,
+  meta?: SavePlanMeta,
+): Promise<PersistMeta> {
+  let persistMeta: PersistMeta = { id: '', createdAt: new Date().toISOString() };
   try {
-    const saved = await savePlan(state, mode);
-    meta = { id: saved.id, createdAt: saved.createdAt.toISOString() };
+    const saved = await savePlan(state, mode, meta);
+    persistMeta = { id: saved.id, createdAt: saved.createdAt.toISOString() };
   } catch (err) {
     console.error('[TravelService] 持久化规划结果失败：', (err as Error).message);
   }
-  return meta;
+  return persistMeta;
+}
+
+/**
+ * Phase16 新增：将用户默认偏好带入请求
+ * 用户显式传入的字段优先级更高（不覆盖）
+ */
+async function applyUserPreferences(
+  request: TravelRequest,
+  userId: string | undefined,
+): Promise<void> {
+  if (!userId) return;
+  const user = await getUserById(userId);
+  if (!user) return;
+  if (user.defaultStyle && !request.travel_style) {
+    request.travel_style = user.defaultStyle;
+  }
+  if (user.defaultBudget != null && request.budget_limit == null) {
+    request.budget_limit = user.defaultBudget;
+  }
+  if (user.defaultPreference && !request.user_preference) {
+    request.user_preference = user.defaultPreference;
+  }
 }
 
 /**
@@ -65,12 +93,16 @@ export async function generatePlan(
   request: TravelRequest,
   mode: RunMode = 'mock',
   format: OutputFormat = 'json',
+  persistMeta?: SavePlanMeta,
 ): Promise<
   | (TravelState & PersistMeta)
   | ({ format: OutputFormat; content: string } & PersistMeta)
 > {
   // 设置运行模式
   setMode(mode);
+
+  // Phase16：带入用户默认偏好（用户显式传参优先级更高）
+  await applyUserPreferences(request, persistMeta?.userId);
 
   // 计算规划结果缓存键
   const cacheKey = planResultKey(request, mode);
@@ -80,15 +112,23 @@ export async function generatePlan(
   if (result) {
     console.log('[TravelService] 规划结果命中缓存，跳过 Agent 执行');
   } else {
-    // 未命中：构建并执行工作流
-    const app = buildTravelGraph();
-    result = await app.invoke({ request });
+    // 未命中：判断单城市 / 多城市
+    const destinations = request.destinations;
+    const isMultiCity = destinations && destinations.length > 1;
+
+    if (isMultiCity) {
+      result = await generateMultiCityPlan(request);
+    } else {
+      // 单城市：构建并执行工作流（原有逻辑）
+      const app = buildTravelGraph();
+      result = await app.invoke({ request });
+    }
     // 写入缓存（失败仅记日志，不阻断）
     await cacheSet(cacheKey, result, PLAN_RESULT_TTL[mode]);
   }
 
   // 持久化到数据库（失败不阻断，仅记日志）
-  const meta = await persistPlan(result, mode);
+  const meta = await persistPlan(result, mode, persistMeta);
 
   // 新规划生成后，清理历史列表缓存（保证列表能看到新记录）
   await cacheDelByPattern('plan:list:*');
@@ -117,6 +157,64 @@ export async function generatePlan(
 }
 
 /**
+ * Phase15 新增：多城市规划执行（非流式）
+ * 循环调用单城市图，汇总后统一调用 budgeting + supervisor
+ */
+async function generateMultiCityPlan(request: TravelRequest): Promise<TravelState> {
+  const cityPlans: CityPlan[] = [];
+  const allToolCalls: TravelState['toolCalls'] = [];
+
+  for (const dest of request.destinations!) {
+    // 构造单城市 request（复用现有图）
+    const cityRequest: TravelRequest = {
+      destination: dest.city,
+      days: dest.days,
+      travelDate: request.travelDate,
+      user_preference: request.user_preference,
+      budget_limit: request.budget_limit,
+      travel_style: request.travel_style,
+    };
+
+    // 调用完整图（flight/hotel/activities/budgeting/supervisor）
+    const app = buildTravelGraph();
+    const cityState = await app.invoke({ request: cityRequest });
+
+    cityPlans.push({
+      city: dest.city,
+      days: dest.days,
+      flights: cityState.flights,
+      hotels: cityState.hotels,
+      activities: cityState.activities,
+    });
+
+    if (cityState.toolCalls) {
+      allToolCalls.push(...cityState.toolCalls);
+    }
+  }
+
+  // 构造汇总 state
+  const mergedState: TravelState = {
+    request,
+    cityPlans,
+    // 兼容单城市字段：取第一个城市
+    flights: cityPlans[0]?.flights,
+    hotels: cityPlans[0]?.hotels,
+    activities: cityPlans[0]?.activities,
+    toolCalls: allToolCalls,
+  };
+
+  // 调用 budgeting 汇总（多城市逻辑）
+  const budgetResult = await budgetingAgent(mergedState);
+  mergedState.budget = budgetResult.budget;
+
+  // 调用 supervisor 汇总（多城市逻辑）
+  const supervisorResult = await supervisorAgent(mergedState);
+  mergedState.summary = supervisorResult.summary;
+
+  return mergedState;
+}
+
+/**
  * 流式执行旅行规划，通过异步生成器逐事件产出（Phase11 新增）
  * 事件顺序：cache_hit（命中缓存）/ start → node_complete（每个节点）→ complete
  * @param request 用户旅行需求
@@ -125,9 +223,13 @@ export async function generatePlan(
 export async function* generatePlanStream(
   request: TravelRequest,
   mode: RunMode = 'mock',
+  persistMeta?: SavePlanMeta,
 ): AsyncGenerator<SSEEvent> {
   // 设置运行模式
   setMode(mode);
+
+  // Phase16：带入用户默认偏好（用户显式传参优先级更高）
+  await applyUserPreferences(request, persistMeta?.userId);
 
   // 计算规划结果缓存键
   const cacheKey = planResultKey(request, mode);
@@ -136,7 +238,7 @@ export async function* generatePlanStream(
   const cached = await cacheGet<TravelState>(cacheKey);
   if (cached) {
     console.log('[TravelService] 规划结果命中缓存，跳过 Agent 执行');
-    const meta = await persistPlan(cached, mode);
+    const meta = await persistPlan(cached, mode, persistMeta);
     await cacheDelByPattern('plan:list:*');
     yield { type: 'cache_hit', data: { result: { ...cached, ...meta } } };
     return;
@@ -145,7 +247,84 @@ export async function* generatePlanStream(
   // 未命中：发送开始事件
   yield { type: 'start', data: { message: '开始生成旅行规划...' } };
 
-  // 构建并流式执行工作流
+  const destinations = request.destinations;
+  const isMultiCity = destinations && destinations.length > 1;
+
+  if (isMultiCity) {
+    // Phase15 多城市流式规划
+    const cityPlans: CityPlan[] = [];
+    const allToolCalls: TravelState['toolCalls'] = [];
+    let finalState: TravelState = { request };
+
+    for (const dest of destinations!) {
+      const cityRequest: TravelRequest = {
+        destination: dest.city,
+        days: dest.days,
+        travelDate: request.travelDate,
+        user_preference: request.user_preference,
+        budget_limit: request.budget_limit,
+        travel_style: request.travel_style,
+      };
+
+      const app = buildTravelGraph();
+      let cityState: TravelState = { request: cityRequest };
+      const stream = await app.stream({ request: cityRequest }, { streamMode: 'updates' });
+      for await (const chunk of stream) {
+        for (const [nodeName, update] of Object.entries(chunk)) {
+          const nodeUpdate = update as Partial<TravelState>;
+          const mergedToolCalls = nodeUpdate.toolCalls
+            ? [...(cityState.toolCalls ?? []), ...nodeUpdate.toolCalls]
+            : cityState.toolCalls;
+          cityState = { ...cityState, ...nodeUpdate, toolCalls: mergedToolCalls };
+          yield {
+            type: 'node_complete',
+            data: {
+              node: `${dest.city}:${nodeName}`,
+              toolCalls: nodeUpdate.toolCalls,
+            },
+          };
+        }
+      }
+
+      cityPlans.push({
+        city: dest.city,
+        days: dest.days,
+        flights: cityState.flights,
+        hotels: cityState.hotels,
+        activities: cityState.activities,
+      });
+      if (cityState.toolCalls) {
+        allToolCalls.push(...cityState.toolCalls);
+      }
+    }
+
+    finalState = {
+      request,
+      cityPlans,
+      flights: cityPlans[0]?.flights,
+      hotels: cityPlans[0]?.hotels,
+      activities: cityPlans[0]?.activities,
+      toolCalls: allToolCalls,
+    };
+
+    // 多城市预算汇总
+    const budgetResult = await budgetingAgent(finalState);
+    finalState.budget = budgetResult.budget;
+    yield { type: 'node_complete', data: { node: 'budgeting' } };
+
+    // 多城市主控汇总
+    const supervisorResult = await supervisorAgent(finalState);
+    finalState.summary = supervisorResult.summary;
+    yield { type: 'node_complete', data: { node: 'supervisor' } };
+
+    await cacheSet(cacheKey, finalState, PLAN_RESULT_TTL[mode]);
+    const meta = await persistPlan(finalState, mode, persistMeta);
+    await cacheDelByPattern('plan:list:*');
+    yield { type: 'complete', data: { result: { ...finalState, ...meta } } };
+    return;
+  }
+
+  // 单城市：构建并流式执行工作流
   const app = buildTravelGraph();
   let finalState: TravelState = { request };
 
@@ -174,9 +353,106 @@ export async function* generatePlanStream(
   await cacheSet(cacheKey, finalState, PLAN_RESULT_TTL[mode]);
 
   // 持久化 + 清理列表缓存
-  const meta = await persistPlan(finalState, mode);
+  const meta = await persistPlan(finalState, mode, persistMeta);
   await cacheDelByPattern('plan:list:*');
 
   // 发送完成事件
   yield { type: 'complete', data: { result: { ...finalState, ...meta } } };
+}
+
+// ============================================================
+// Phase14：规划修订（用户反馈 → 重新生成规划）
+// ============================================================
+
+/**
+ * 基于用户反馈修订规划（非流式）
+ * 将反馈追加到 request.user_preference，重新调用完整规划流程
+ */
+export async function revisePlan(
+  planId: string,
+  feedback: string,
+  mode?: RunMode,
+  persistMeta?: SavePlanMeta,
+): Promise<TravelState & PersistMeta> {
+  // 1. 查询原规划
+  const original = await getPlanById(planId);
+  if (!original) {
+    throw new Error(`规划不存在：${planId}`);
+  }
+
+  // 2. 重组 request
+  const request: TravelRequest = {
+    destination: original.destination,
+    days: original.days,
+    travelDate: original.travelDate,
+  };
+  if (original.userPreference) request.user_preference = original.userPreference;
+  if (original.budgetLimit !== null && original.budgetLimit !== undefined) {
+    request.budget_limit = original.budgetLimit;
+  }
+  if (original.travelStyle) request.travel_style = original.travelStyle;
+
+  // 3. 将反馈追加到 user_preference
+  const basePreference = request.user_preference ?? '';
+  request.user_preference = basePreference
+    ? `${basePreference}\n\n用户反馈：${feedback}`
+    : `用户反馈：${feedback}`;
+
+  // 4. 确定运行模式
+  const runMode: RunMode = mode ?? (original.mode === 'llm' ? 'llm' : 'mock');
+
+  // 5. 调用现有 generatePlan
+  const result = await generatePlan(request, runMode, 'json', {
+    parentId: planId,
+    feedback,
+    userId: persistMeta?.userId,
+  });
+
+  return result as TravelState & PersistMeta;
+}
+
+/**
+ * 基于用户反馈修订规划（流式）
+ * 逻辑与 revisePlan 相同，复用 generatePlanStream
+ */
+export async function* revisePlanStream(
+  planId: string,
+  feedback: string,
+  mode?: RunMode,
+  persistMeta?: SavePlanMeta,
+): AsyncGenerator<SSEEvent> {
+  // 1. 查询原规划
+  const original = await getPlanById(planId);
+  if (!original) {
+    yield { type: 'error', data: { message: `规划不存在：${planId}` } };
+    return;
+  }
+
+  // 2. 重组 request
+  const request: TravelRequest = {
+    destination: original.destination,
+    days: original.days,
+    travelDate: original.travelDate,
+  };
+  if (original.userPreference) request.user_preference = original.userPreference;
+  if (original.budgetLimit !== null && original.budgetLimit !== undefined) {
+    request.budget_limit = original.budgetLimit;
+  }
+  if (original.travelStyle) request.travel_style = original.travelStyle;
+
+  // 3. 将反馈追加到 user_preference
+  const basePreference = request.user_preference ?? '';
+  request.user_preference = basePreference
+    ? `${basePreference}\n\n用户反馈：${feedback}`
+    : `用户反馈：${feedback}`;
+
+  // 4. 确定运行模式
+  const runMode: RunMode = mode ?? (original.mode === 'llm' ? 'llm' : 'mock');
+
+  // 5. 调用现有 generatePlanStream
+  yield* generatePlanStream(request, runMode, {
+    parentId: planId,
+    feedback,
+    userId: persistMeta?.userId,
+  });
 }

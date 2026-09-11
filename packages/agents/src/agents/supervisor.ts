@@ -31,6 +31,36 @@ const SUPERVISOR_SYSTEM_PROMPT = `你是旅行主控智能体 Travel Supervisor�
  * 输出：最终旅行方案文本（写入 state.summary）
  */
 export async function supervisorAgent(state: TravelState) {
+  // Phase15 新增：多城市汇总
+  if (state.cityPlans && state.cityPlans.length > 1) {
+    if (!isLLMMode()) {
+      const summary = formatPlan(state);
+      return { summary };
+    }
+    try {
+      const llm = getLLM();
+      if (!llm) {
+        throw new Error('LLM 未配置');
+      }
+      const userContent = JSON.stringify({
+        request: state.request,
+        cityPlans: state.cityPlans,
+        budget: state.budget ?? null,
+      });
+      const response = await llm.invoke([
+        new SystemMessage(SUPERVISOR_SYSTEM_PROMPT),
+        new HumanMessage(userContent),
+      ]);
+      const summary =
+        typeof response.content === 'string' ? response.content : '';
+      return { summary: summary || formatPlan(state) };
+    } catch (err) {
+      console.error('[Supervisor] 多城市 LLM 调用失败，回退 mock：', (err as Error).message);
+      const summary = formatPlan(state);
+      return { summary };
+    }
+  }
+
   // mock 模式：沿用原格式化逻辑
   if (!isLLMMode()) {
     const summary = formatPlan(state);

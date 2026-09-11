@@ -1,4 +1,4 @@
-// Prisma Schema - Phase6
+// Prisma Schema - Phase16
 // PostgreSQL + Prisma ORM
 generator client {
   provider = "prisma-client-js"
@@ -6,6 +6,22 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+// Phase16 新增：用户模型
+model User {
+  id                String   @id @default(cuid())
+  username          String   @unique
+  passwordHash      String
+  salt              String
+  // 个性化默认偏好（均可为空，生成规划时自动带入）
+  defaultStyle      String?
+  defaultBudget     Float?
+  defaultPreference String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  plans TravelPlan[]
 }
 
 model TravelPlan {
@@ -23,9 +39,16 @@ model TravelPlan {
   budget         Json?
   summary        String?
   toolCalls      Json?    // Phase11 新增：工具调用记录
+  cityPlans      Json?    // Phase15 新增：多城市规划结果
+  parentId       String?  // Phase14 新增：修订来源的规划 ID（null 表示原始规划）
+  feedback       String?  // Phase14 新增：本次修订的反馈内容（parentId 非 null 时有值）
+  userId         String?  // Phase16 新增：规划归属用户（null 为匿名规划）
+  user           User?    @relation(fields: [userId], references: [id])
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@index([destination])
   @@index([createdAt])
+  @@index([parentId])     // Phase14 新增：支持按 parentId 查询修订历史
+  @@index([userId])       // Phase16 新增：按用户查询规划
 }

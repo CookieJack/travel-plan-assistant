@@ -3,17 +3,21 @@
  * POST /api/plan/stream
  *
  * Phase11 新增：实时推送 Agent 执行进度与工具调用记录
+ * Phase14 重构：SSE 响应逻辑抽取到 lib/sse.ts
  */
 import { Hono } from 'hono';
-import { streamSSE } from 'hono/streaming';
 import { generatePlanStream } from '../services/travelService.js';
+import { withSSE } from '../lib/sse.js';
 import { parseRequestBody, parseMode } from './plan.js';
+import { optionalAuth } from '../middleware/auth.js';
 
 const planStream = new Hono();
 
-planStream.post('/', async (c) => {
+planStream.post('/', optionalAuth, async (c) => {
   // 解析 mode
   const mode = parseMode(c.req.query('mode'));
+  // Phase16：从鉴权中间件获取 userId（未登录为 undefined）
+  const userId = c.get('userId');
 
   // 解析请求体
   let body: unknown;
@@ -28,38 +32,7 @@ planStream.post('/', async (c) => {
     return c.json({ error: parsed.error, code: 'VALIDATION_ERROR' }, 400);
   }
 
-  // SSE 响应头
-  c.header('Content-Type', 'text/event-stream; charset=utf-8');
-  c.header('Cache-Control', 'no-cache');
-  c.header('Connection', 'keep-alive');
-  c.header('X-Accel-Buffering', 'no');
-
-  return streamSSE(
-    c,
-    async (stream) => {
-      try {
-        for await (const event of generatePlanStream(parsed, mode)) {
-          await stream.writeSSE({
-            event: event.type,
-            data: JSON.stringify(event.data),
-          });
-        }
-      } catch (err) {
-        console.error('[PlanStreamRoute] 流式规划失败：', (err as Error).message);
-        await stream.writeSSE({
-          event: 'error',
-          data: JSON.stringify({ message: (err as Error).message }),
-        });
-      }
-    },
-    async (err, stream) => {
-      console.error('[PlanStreamRoute] SSE 连接异常：', (err as Error).message);
-      await stream.writeSSE({
-        event: 'error',
-        data: JSON.stringify({ message: (err as Error).message }),
-      });
-    },
-  );
+  return withSSE(c, generatePlanStream(parsed, mode, { userId }));
 });
 
 export { planStream };

@@ -93,9 +93,11 @@ export function planListKey(
   page: number,
   pageSize: number,
   destination?: string,
+  userId?: string,
 ): string {
   const destHash = destination ? sha256(destination, 8) : 'none';
-  return `plan:list:${page}:${pageSize}:${destHash}`;
+  const userTag = userId ?? 'anon';
+  return `plan:list:${page}:${pageSize}:${destHash}:${userTag}`;
 }
 
 // ============================================================
