@@ -3,20 +3,28 @@ import { z } from 'zod';
 /**
  * TravelRequest 入参校验 schema
  * 与 packages/shared/src/travel.ts 中的 TravelRequest 接口保持一致
+ *
+ * Phase17 调整：
+ * - destination/days/travelDate 改为可选（自然语言模式下由 intent_agent 抽取）
+ * - 新增 naturalLanguage 和 clarificationHistory 字段
  */
 export const travelRequestSchema = z.object({
   destination: z
-    .string({ message: 'destination 为必填项' })
+    .string()
     .trim()
-    .min(1, 'destination 不能为空'),
+    .optional()
+    .default(''),
   days: z
-    .number({ message: 'days 为必填项' })
+    .number()
     .int('days 必须为整数')
-    .positive('days 必须为正整数'),
+    .min(0, 'days 不能为负数')
+    .optional()
+    .default(0),
   travelDate: z
-    .string({ message: 'travelDate 为必填项' })
+    .string()
     .trim()
-    .min(1, 'travelDate 不能为空'),
+    .optional()
+    .default(''),
   user_preference: z
     .string()
     .trim()
@@ -47,6 +55,16 @@ export const travelRequestSchema = z.object({
       }),
     )
     .min(2, '多城市至少需要 2 个城市')
+    .optional(),
+  // Phase17 新增：自然语言输入与对话历史
+  naturalLanguage: z.string().trim().optional(),
+  clarificationHistory: z
+    .array(
+      z.object({
+        role: z.enum(['user', 'assistant']),
+        content: z.string().trim().min(1, '消息内容不能为空'),
+      }),
+    )
     .optional(),
 });
 

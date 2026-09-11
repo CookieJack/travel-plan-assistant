@@ -1,9 +1,11 @@
 /**
  * LangGraph 工作流构建
- * 固定调度逻辑（严格遵循Spec，禁止改动）：
- *   START → 并行(flight, hotel, activities) → budgeting → supervisor → END
+ * Phase17 调整后拓扑：
+ *   START → intent_agent → (条件路由)
+ *     - needClarification → END
+ *     - 否则 → 并行(flight, hotel, activities) → budgeting → supervisor → END
  *
- * 1主控 + 4子Agent，无跨角色乱调度
+ * 1主控 + 4子Agent + 1意图识别前置节点，无跨角色乱调度
  */
 import { StateGraph, Annotation, START, END } from '@langchain/langgraph';
 import type {
@@ -20,6 +22,7 @@ import { hotelAgent } from '../agents/hotelAgent.js';
 import { activitiesAgent } from '../agents/activitiesAgent.js';
 import { budgetingAgent } from '../agents/budgetingAgent.js';
 import { supervisorAgent } from '../agents/supervisor.js';
+import { intentAgent } from '../agents/intentAgent.js';
 
 /** LangGraph 状态注解 */
 const StateAnnotation = Annotation.Root({
@@ -34,6 +37,10 @@ const StateAnnotation = Annotation.Root({
   toolCalls: Annotation<ToolCallRecord[] | undefined>({
     reducer: (left, right) => [...(left ?? []), ...(right ?? [])],
   }),
+  // Phase17 新增：意图识别与追问相关字段
+  needClarification: Annotation<boolean | undefined>(),
+  clarificationQuestion: Annotation<string | undefined>(),
+  extractedFields: Annotation<Partial<TravelRequest> | undefined>(),
 });
 
 /**
@@ -41,6 +48,8 @@ const StateAnnotation = Annotation.Root({
  */
 export function buildTravelGraph() {
   const graph = new StateGraph(StateAnnotation)
+    // Phase17 新增：意图识别与信息抽取前置节点
+    .addNode('intent_agent', intentAgent)
     // 4个子Agent节点（节点名加_agent后缀，避免与状态字段同名冲突）
     .addNode('flight_agent', flightAgent)
     .addNode('hotel_agent', hotelAgent)
@@ -49,10 +58,16 @@ export function buildTravelGraph() {
     // 主控汇总节点
     .addNode('supervisor_agent', supervisorAgent)
 
-    // 从START并行分发到机票、酒店、活动三个Agent
-    .addEdge(START, 'flight_agent')
-    .addEdge(START, 'hotel_agent')
-    .addEdge(START, 'activities_agent')
+    // START → intent_agent
+    .addEdge(START, 'intent_agent')
+
+    // intent_agent → 条件路由
+    // - needClarification: 直接 END（图中断，前端展示追问）
+    // - 否则：并行进入三个子 Agent
+    .addConditionalEdges('intent_agent', (state: TravelState) => {
+      if (state.needClarification) return END;
+      return ['flight_agent', 'hotel_agent', 'activities_agent'];
+    })
 
     // 三个Agent全部完成后，进入预算Agent（依赖三者结果）
     .addEdge(['flight_agent', 'hotel_agent', 'activities_agent'], 'budgeting_agent')

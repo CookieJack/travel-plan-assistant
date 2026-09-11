@@ -2,7 +2,7 @@
  * 旅行规划服务
  * 封装 Agent 调用，处理 mode/format，不修改 Agent 内部逻辑
  */
-import { buildTravelGraph, budgetingAgent, supervisorAgent } from '@travel/agents';
+import { buildTravelGraph, budgetingAgent, supervisorAgent, intentAgent } from '@travel/agents';
 import { setMode } from '@travel/llm';
 import {
   formatPlanMarkdown,
@@ -39,6 +39,7 @@ export type SSEEvent =
   | { type: 'node_complete'; data: { node: string; toolCalls?: TravelState['toolCalls'] } }
   | { type: 'cache_hit'; data: { result: TravelState & PersistMeta } }
   | { type: 'complete'; data: { result: TravelState & PersistMeta } }
+  | { type: 'clarification'; data: { question: string; extractedFields: Partial<TravelRequest> } }
   | { type: 'error'; data: { message: string } };
 
 /**
@@ -104,8 +105,26 @@ export async function generatePlan(
   // Phase16：带入用户默认偏好（用户显式传参优先级更高）
   await applyUserPreferences(request, persistMeta?.userId);
 
+  // Phase17：自然语言输入时，先调用 intent_agent 抽取结构化字段
+  let activeRequest = request;
+  if (request.naturalLanguage) {
+    const intentResult = await intentAgent({ request });
+    if (intentResult.needClarification) {
+      // 追问场景：不缓存、不持久化，直接返回追问信息
+      return {
+        ...intentResult,
+        id: '',
+        createdAt: new Date().toISOString(),
+      } as TravelState & PersistMeta;
+    }
+    // 用抽取后的字段更新 request，清除 naturalLanguage 避免图中重复抽取
+    activeRequest = { ...intentResult.request };
+    activeRequest.naturalLanguage = undefined;
+    activeRequest.clarificationHistory = undefined;
+  }
+
   // 计算规划结果缓存键
-  const cacheKey = planResultKey(request, mode);
+  const cacheKey = planResultKey(activeRequest, mode);
 
   // 查询缓存：命中则跳过 Agent 执行
   let result: TravelState | null = await cacheGet<TravelState>(cacheKey);
@@ -113,15 +132,15 @@ export async function generatePlan(
     console.log('[TravelService] 规划结果命中缓存，跳过 Agent 执行');
   } else {
     // 未命中：判断单城市 / 多城市
-    const destinations = request.destinations;
+    const destinations = activeRequest.destinations;
     const isMultiCity = destinations && destinations.length > 1;
 
     if (isMultiCity) {
-      result = await generateMultiCityPlan(request);
+      result = await generateMultiCityPlan(activeRequest);
     } else {
       // 单城市：构建并执行工作流（原有逻辑）
       const app = buildTravelGraph();
-      result = await app.invoke({ request });
+      result = await app.invoke({ request: activeRequest });
     }
     // 写入缓存（失败仅记日志，不阻断）
     await cacheSet(cacheKey, result, PLAN_RESULT_TTL[mode]);
@@ -231,8 +250,29 @@ export async function* generatePlanStream(
   // Phase16：带入用户默认偏好（用户显式传参优先级更高）
   await applyUserPreferences(request, persistMeta?.userId);
 
+  // Phase17：自然语言输入时，先调用 intent_agent 抽取结构化字段
+  let activeRequest = request;
+  if (request.naturalLanguage) {
+    const intentResult = await intentAgent({ request });
+    if (intentResult.needClarification) {
+      // 追问场景：发送 clarification 事件后结束
+      yield {
+        type: 'clarification',
+        data: {
+          question: intentResult.clarificationQuestion ?? '请补充旅行信息',
+          extractedFields: intentResult.extractedFields ?? {},
+        },
+      };
+      return;
+    }
+    // 用抽取后的字段更新 request，清除 naturalLanguage 避免图中重复抽取
+    activeRequest = { ...intentResult.request };
+    activeRequest.naturalLanguage = undefined;
+    activeRequest.clarificationHistory = undefined;
+  }
+
   // 计算规划结果缓存键
-  const cacheKey = planResultKey(request, mode);
+  const cacheKey = planResultKey(activeRequest, mode);
 
   // 查询缓存：命中则直接返回完整结果
   const cached = await cacheGet<TravelState>(cacheKey);
@@ -247,23 +287,23 @@ export async function* generatePlanStream(
   // 未命中：发送开始事件
   yield { type: 'start', data: { message: '开始生成旅行规划...' } };
 
-  const destinations = request.destinations;
+  const destinations = activeRequest.destinations;
   const isMultiCity = destinations && destinations.length > 1;
 
   if (isMultiCity) {
     // Phase15 多城市流式规划
     const cityPlans: CityPlan[] = [];
     const allToolCalls: TravelState['toolCalls'] = [];
-    let finalState: TravelState = { request };
+    let finalState: TravelState = { request: activeRequest };
 
     for (const dest of destinations!) {
       const cityRequest: TravelRequest = {
         destination: dest.city,
         days: dest.days,
-        travelDate: request.travelDate,
-        user_preference: request.user_preference,
-        budget_limit: request.budget_limit,
-        travel_style: request.travel_style,
+        travelDate: activeRequest.travelDate,
+        user_preference: activeRequest.user_preference,
+        budget_limit: activeRequest.budget_limit,
+        travel_style: activeRequest.travel_style,
       };
 
       const app = buildTravelGraph();
@@ -299,7 +339,7 @@ export async function* generatePlanStream(
     }
 
     finalState = {
-      request,
+      request: activeRequest,
       cityPlans,
       flights: cityPlans[0]?.flights,
       hotels: cityPlans[0]?.hotels,
@@ -326,9 +366,9 @@ export async function* generatePlanStream(
 
   // 单城市：构建并流式执行工作流
   const app = buildTravelGraph();
-  let finalState: TravelState = { request };
+  let finalState: TravelState = { request: activeRequest };
 
-  const stream = await app.stream({ request }, { streamMode: 'updates' });
+  const stream = await app.stream({ request: activeRequest }, { streamMode: 'updates' });
   for await (const chunk of stream) {
     for (const [nodeName, update] of Object.entries(chunk)) {
       const nodeUpdate = update as Partial<TravelState>;

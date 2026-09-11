@@ -71,6 +71,10 @@ function sha256(input: string, length = 16): string {
  * 可选字段缺失时用空字符串占位，保证键稳定
  */
 export function planResultKey(request: TravelRequest, mode: RunMode): string {
+  // Phase17：多城市时将 destinations 纳入缓存键，避免与单城市缓存冲突
+  const destinationsStr = request.destinations
+    ? request.destinations.map((d) => `${d.city}:${d.days}`).join(',')
+    : '';
   const payload = [
     request.destination,
     String(request.days),
@@ -78,6 +82,7 @@ export function planResultKey(request: TravelRequest, mode: RunMode): string {
     request.budget_limit != null ? String(request.budget_limit) : '',
     request.user_preference ?? '',
     request.travel_style ?? '',
+    destinationsStr,
     mode,
   ].join('|');
   return `plan:result:${sha256(payload)}`;

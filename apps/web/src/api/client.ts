@@ -16,6 +16,16 @@ export interface PlanMeta {
 /** JSON 格式规划响应 */
 export type JsonPlanResponse = TravelState & PlanMeta;
 
+/** Phase17 新增：追问结果 */
+export interface ClarificationResult {
+  needClarification: true;
+  question: string;
+  extractedFields: Partial<TravelRequest>;
+}
+
+/** Phase17 新增：流式规划返回类型（规划结果 或 追问） */
+export type PlanStreamResult = JsonPlanResponse | ClarificationResult;
+
 /** 历史列表项 */
 export interface PlanListItem {
   id: string;
@@ -264,6 +274,8 @@ export async function revisePlanStream(
 export interface StreamCallbacks {
   /** 某个 Agent 节点执行完成 */
   onNodeComplete?: (node: string, toolCalls?: ToolCallRecord[]) => void;
+  /** Phase17 新增：收到追问时回调 */
+  onClarification?: (question: string, extractedFields: Partial<TravelRequest>) => void;
 }
 
 /** 解析单个 SSE 文本块为 { event, data } */
@@ -291,13 +303,15 @@ function parseSSEEvent(raw: string): { event: string; data: any } | null {
  * POST /api/plan/stream?mode={mode}
  *
  * 使用 fetch + ReadableStream 手动解析 SSE（POST 请求无法用 EventSource）
- * 通过回调实时推送节点完成事件，最终返回完整规划结果。
+ * 通过回调实时推送节点完成事件，最终返回完整规划结果或追问结果。
+ *
+ * Phase17 新增：支持 clarification 事件，返回追问结果。
  */
 export async function generatePlanStream(
   request: TravelRequest,
   mode: RunMode,
   callbacks?: StreamCallbacks,
-): Promise<JsonPlanResponse> {
+): Promise<PlanStreamResult> {
   const res = await fetch(`${API_BASE}/plan/stream?mode=${mode}`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
@@ -313,6 +327,7 @@ export async function generatePlanStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let finalResult: JsonPlanResponse | null = null;
+  let clarification: ClarificationResult | null = null;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -335,12 +350,24 @@ export async function generatePlanStream(
         case 'complete':
           finalResult = parsed.data.result as JsonPlanResponse;
           break;
+        case 'clarification':
+          clarification = {
+            needClarification: true,
+            question: parsed.data.question,
+            extractedFields: parsed.data.extractedFields,
+          };
+          callbacks?.onClarification?.(
+            clarification.question,
+            clarification.extractedFields,
+          );
+          break;
         case 'error':
           throw new Error(parsed.data.message || '规划生成失败');
       }
     }
   }
 
+  if (clarification) return clarification;
   if (!finalResult) throw new Error('未收到规划结果');
   return finalResult;
 }

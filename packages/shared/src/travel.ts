@@ -19,12 +19,22 @@ export interface TravelRequest {
   travel_style?: string;
   /** Phase15 新增：多城市目的地列表（存在且长度>1 时为多城市模式） */
   destinations?: CityDestination[];
+  /** Phase17 新增：用户自然语言输入（最新一轮） */
+  naturalLanguage?: string;
+  /** Phase17 新增：对话历史（不含最新输入） */
+  clarificationHistory?: ClarificationMessage[];
 }
 
 /** 多城市目的地（Phase15 新增） */
 export interface CityDestination {
   city: string;
   days: number;
+}
+
+/** 追问消息（Phase17 新增） */
+export interface ClarificationMessage {
+  role: 'user' | 'assistant';
+  content: string;
 }
 
 /** 单个城市的规划结果（Phase15 新增） */
@@ -139,6 +149,12 @@ export interface TravelState {
   toolCalls?: ToolCallRecord[];
   /** Phase15 新增：多城市规划结果（单城市模式下为 undefined） */
   cityPlans?: CityPlan[];
+  /** Phase17 新增：是否需要追问 */
+  needClarification?: boolean;
+  /** Phase17 新增：追问问题文本 */
+  clarificationQuestion?: string;
+  /** Phase17 新增：已抽取的字段（追问时返回前端） */
+  extractedFields?: Partial<TravelRequest>;
 }
 
 // ============================================================
