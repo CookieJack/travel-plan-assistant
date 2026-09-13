@@ -68,7 +68,7 @@ export function ChatPanel({
   };
 
   return (
-    <div className="flex h-[calc(100vh-220px)] flex-col">
+    <div className="flex flex-1 min-h-0 flex-col">
       {/* 消息列表 */}
       <div
         ref={scrollRef}

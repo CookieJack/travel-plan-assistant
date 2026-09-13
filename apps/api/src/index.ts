@@ -22,6 +22,7 @@ const { planStream } = await import('./routes/planStream.js');
 const { plans } = await import('./routes/plans.js');
 const { auth } = await import('./routes/auth.js');
 const { user } = await import('./routes/user.js');
+const { conversations } = await import('./routes/conversations.js');
 
 // 创建 Hono 应用
 const app = new Hono();
@@ -31,7 +32,7 @@ app.use(
   '/api/*',
   cors({
     origin: '*',
-    allowMethods: ['GET', 'POST', 'PUT', 'OPTIONS'],
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
   }),
 );
@@ -43,6 +44,7 @@ app.route('/api/plan/stream', planStream);
 app.route('/api/plans', plans);
 app.route('/api/auth', auth);
 app.route('/api/user', user);
+app.route('/api/conversations', conversations);
 
 // 全局错误处理
 app.onError((err, c) => {

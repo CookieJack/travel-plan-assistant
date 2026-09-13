@@ -13,6 +13,11 @@ import {
 import type { OutputFormat, RunMode } from '../types/api.js';
 import { savePlan, getPlanById, getUserById, type SavePlanMeta } from './dbService.js';
 import {
+  createConversation,
+  addMessage,
+  attachPlanToConversation,
+} from './conversationService.js';
+import {
   cacheGet,
   cacheSet,
   planResultKey,
@@ -37,9 +42,9 @@ interface PersistMeta {
 export type SSEEvent =
   | { type: 'start'; data: { message: string } }
   | { type: 'node_complete'; data: { node: string; toolCalls?: TravelState['toolCalls'] } }
-  | { type: 'cache_hit'; data: { result: TravelState & PersistMeta } }
-  | { type: 'complete'; data: { result: TravelState & PersistMeta } }
-  | { type: 'clarification'; data: { question: string; extractedFields: Partial<TravelRequest> } }
+  | { type: 'cache_hit'; data: { result: TravelState & PersistMeta; conversationId: string } }
+  | { type: 'complete'; data: { result: TravelState & PersistMeta; conversationId: string } }
+  | { type: 'clarification'; data: { question: string; extractedFields: Partial<TravelRequest>; conversationId: string } }
   | { type: 'error'; data: { message: string } };
 
 /**
@@ -105,17 +110,46 @@ export async function generatePlan(
   // Phase16：带入用户默认偏好（用户显式传参优先级更高）
   await applyUserPreferences(request, persistMeta?.userId);
 
+  // Phase18：确保会话存在并保存用户消息
+  let conversationId = request.conversationId;
+  if (!conversationId && request.naturalLanguage) {
+    const conv = await createConversation(
+      persistMeta?.userId,
+      request.naturalLanguage,
+    );
+    conversationId = conv.id;
+  }
+  if (conversationId && request.naturalLanguage) {
+    await addMessage({
+      conversationId,
+      role: 'user',
+      content: request.naturalLanguage,
+      type: 'text',
+    });
+  }
+
   // Phase17：自然语言输入时，先调用 intent_agent 抽取结构化字段
   let activeRequest = request;
   if (request.naturalLanguage) {
     const intentResult = await intentAgent({ request });
     if (intentResult.needClarification) {
+      // Phase18：保存助手追问消息
+      if (conversationId) {
+        await addMessage({
+          conversationId,
+          role: 'assistant',
+          content: intentResult.clarificationQuestion ?? '请补充旅行信息',
+          type: 'clarification',
+          data: intentResult.extractedFields,
+        });
+      }
       // 追问场景：不缓存、不持久化，直接返回追问信息
       return {
         ...intentResult,
         id: '',
         createdAt: new Date().toISOString(),
-      } as TravelState & PersistMeta;
+        conversationId,
+      } as TravelState & PersistMeta & { conversationId?: string };
     }
     // 用抽取后的字段更新 request，清除 naturalLanguage 避免图中重复抽取
     activeRequest = { ...intentResult.request };
@@ -148,6 +182,18 @@ export async function generatePlan(
 
   // 持久化到数据库（失败不阻断，仅记日志）
   const meta = await persistPlan(result, mode, persistMeta);
+
+  // Phase18：保存助手结果消息并关联 planId 到会话
+  if (conversationId) {
+    await addMessage({
+      conversationId,
+      role: 'assistant',
+      content: '已为您生成旅行规划方案：',
+      type: 'plan_result',
+      planId: meta.id,
+    });
+    await attachPlanToConversation(conversationId, meta.id);
+  }
 
   // 新规划生成后，清理历史列表缓存（保证列表能看到新记录）
   await cacheDelByPattern('plan:list:*');
@@ -250,17 +296,46 @@ export async function* generatePlanStream(
   // Phase16：带入用户默认偏好（用户显式传参优先级更高）
   await applyUserPreferences(request, persistMeta?.userId);
 
+  // Phase18：确保会话存在并保存用户消息
+  let conversationId = request.conversationId;
+  if (!conversationId && request.naturalLanguage) {
+    const conv = await createConversation(
+      persistMeta?.userId,
+      request.naturalLanguage,
+    );
+    conversationId = conv.id;
+  }
+  if (conversationId && request.naturalLanguage) {
+    await addMessage({
+      conversationId,
+      role: 'user',
+      content: request.naturalLanguage,
+      type: 'text',
+    });
+  }
+
   // Phase17：自然语言输入时，先调用 intent_agent 抽取结构化字段
   let activeRequest = request;
   if (request.naturalLanguage) {
     const intentResult = await intentAgent({ request });
     if (intentResult.needClarification) {
+      // Phase18：保存助手追问消息
+      if (conversationId) {
+        await addMessage({
+          conversationId,
+          role: 'assistant',
+          content: intentResult.clarificationQuestion ?? '请补充旅行信息',
+          type: 'clarification',
+          data: intentResult.extractedFields,
+        });
+      }
       // 追问场景：发送 clarification 事件后结束
       yield {
         type: 'clarification',
         data: {
           question: intentResult.clarificationQuestion ?? '请补充旅行信息',
           extractedFields: intentResult.extractedFields ?? {},
+          conversationId: conversationId ?? '',
         },
       };
       return;
@@ -279,8 +354,22 @@ export async function* generatePlanStream(
   if (cached) {
     console.log('[TravelService] 规划结果命中缓存，跳过 Agent 执行');
     const meta = await persistPlan(cached, mode, persistMeta);
+    // Phase18：保存助手结果消息并关联 planId
+    if (conversationId) {
+      await addMessage({
+        conversationId,
+        role: 'assistant',
+        content: '已为您生成旅行规划方案：',
+        type: 'plan_result',
+        planId: meta.id,
+      });
+      await attachPlanToConversation(conversationId, meta.id);
+    }
     await cacheDelByPattern('plan:list:*');
-    yield { type: 'cache_hit', data: { result: { ...cached, ...meta } } };
+    yield {
+      type: 'cache_hit',
+      data: { result: { ...cached, ...meta }, conversationId: conversationId ?? '' },
+    };
     return;
   }
 
@@ -359,8 +448,22 @@ export async function* generatePlanStream(
 
     await cacheSet(cacheKey, finalState, PLAN_RESULT_TTL[mode]);
     const meta = await persistPlan(finalState, mode, persistMeta);
+    // Phase18：保存助手结果消息并关联 planId
+    if (conversationId) {
+      await addMessage({
+        conversationId,
+        role: 'assistant',
+        content: '已为您生成旅行规划方案：',
+        type: 'plan_result',
+        planId: meta.id,
+      });
+      await attachPlanToConversation(conversationId, meta.id);
+    }
     await cacheDelByPattern('plan:list:*');
-    yield { type: 'complete', data: { result: { ...finalState, ...meta } } };
+    yield {
+      type: 'complete',
+      data: { result: { ...finalState, ...meta }, conversationId: conversationId ?? '' },
+    };
     return;
   }
 
@@ -394,10 +497,24 @@ export async function* generatePlanStream(
 
   // 持久化 + 清理列表缓存
   const meta = await persistPlan(finalState, mode, persistMeta);
+  // Phase18：保存助手结果消息并关联 planId
+  if (conversationId) {
+    await addMessage({
+      conversationId,
+      role: 'assistant',
+      content: '已为您生成旅行规划方案：',
+      type: 'plan_result',
+      planId: meta.id,
+    });
+    await attachPlanToConversation(conversationId, meta.id);
+  }
   await cacheDelByPattern('plan:list:*');
 
   // 发送完成事件
-  yield { type: 'complete', data: { result: { ...finalState, ...meta } } };
+  yield {
+    type: 'complete',
+    data: { result: { ...finalState, ...meta }, conversationId: conversationId ?? '' },
+  };
 }
 
 // ============================================================

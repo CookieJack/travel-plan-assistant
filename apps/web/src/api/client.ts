@@ -21,6 +21,7 @@ export interface ClarificationResult {
   needClarification: true;
   question: string;
   extractedFields: Partial<TravelRequest>;
+  conversationId: string;  // Phase18 新增
 }
 
 /** Phase17 新增：流式规划返回类型（规划结果 或 追问） */
@@ -55,6 +56,40 @@ export interface PlanDetail extends TravelState {
   userPreference: string | null;
   budgetLimit: number | null;
   travelStyle: string | null;
+}
+
+// ============================================================
+// Phase18 新增：会话 API 类型
+// ============================================================
+
+/** 会话列表项 */
+export interface ConversationItem {
+  id: string;
+  title: string;
+  planId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 会话消息 */
+export interface ConversationMessageItem {
+  id: string;
+  role: string;
+  content: string;
+  type: string;
+  planId: string | null;
+  data: unknown;
+  createdAt: string;
+}
+
+/** 会话详情 */
+export interface ConversationDetail {
+  id: string;
+  title: string;
+  planId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  messages: ConversationMessageItem[];
 }
 
 /** API 基础路径（Vite dev server 代理 /api 到后端） */
@@ -182,6 +217,57 @@ export async function getPlanById(id: string): Promise<PlanDetail> {
 }
 
 // ============================================================
+// Phase18 新增：会话 API
+// ============================================================
+
+/**
+ * 获取会话列表
+ * GET /api/conversations
+ */
+export async function listConversations(): Promise<{ items: ConversationItem[] }> {
+  const res = await fetch(`${API_BASE}/conversations`, {
+    headers: authHeaders(),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    const err = data as ErrorResponse;
+    throw new Error(err.error || '获取会话列表失败');
+  }
+  return data as { items: ConversationItem[] };
+}
+
+/**
+ * 获取会话详情（含消息）
+ * GET /api/conversations/:id
+ */
+export async function getConversation(id: string): Promise<ConversationDetail> {
+  const res = await fetch(`${API_BASE}/conversations/${id}`, {
+    headers: authHeaders(),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    const err = data as ErrorResponse;
+    throw new Error(err.error || '获取会话详情失败');
+  }
+  return data as ConversationDetail;
+}
+
+/**
+ * 删除会话
+ * DELETE /api/conversations/:id
+ */
+export async function deleteConversation(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/conversations/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as ErrorResponse).error || '删除会话失败');
+  }
+}
+
+// ============================================================
 // Phase14 新增：规划修订 API
 // ============================================================
 
@@ -276,6 +362,8 @@ export interface StreamCallbacks {
   onNodeComplete?: (node: string, toolCalls?: ToolCallRecord[]) => void;
   /** Phase17 新增：收到追问时回调 */
   onClarification?: (question: string, extractedFields: Partial<TravelRequest>) => void;
+  /** Phase18 新增：收到会话 ID 时回调 */
+  onConversationId?: (conversationId: string) => void;
 }
 
 /** 解析单个 SSE 文本块为 { event, data } */
@@ -331,6 +419,7 @@ export async function generatePlanStream(
   let buffer = '';
   let finalResult: JsonPlanResponse | null = null;
   let clarification: ClarificationResult | null = null;
+  let conversationId = '';
 
   while (true) {
     const { done, value } = await reader.read();
@@ -352,13 +441,24 @@ export async function generatePlanStream(
         case 'cache_hit':
         case 'complete':
           finalResult = parsed.data.result as JsonPlanResponse;
+          // Phase18：提取会话 ID
+          if (parsed.data.conversationId) {
+            conversationId = parsed.data.conversationId as string;
+            callbacks?.onConversationId?.(conversationId);
+          }
           break;
         case 'clarification':
           clarification = {
             needClarification: true,
             question: parsed.data.question,
             extractedFields: parsed.data.extractedFields,
+            conversationId: parsed.data.conversationId ?? '',
           };
+          // Phase18：提取会话 ID
+          if (parsed.data.conversationId) {
+            conversationId = parsed.data.conversationId as string;
+            callbacks?.onConversationId?.(conversationId);
+          }
           callbacks?.onClarification?.(
             clarification.question,
             clarification.extractedFields,

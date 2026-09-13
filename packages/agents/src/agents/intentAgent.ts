@@ -124,6 +124,17 @@ export async function intentAgent(state: TravelState) {
     destinations: extracted.destinations ?? request.destinations,
   };
 
+  // 多城市场景：LLM 按提示词会将 destination 留空、仅填 destinations。
+  // 此时从 destinations 推导回填 destination/days，避免必填检查误判缺失。
+  if (merged.destinations && merged.destinations.length > 0) {
+    if (!merged.destination) {
+      merged.destination = merged.destinations[0].city;
+    }
+    if (!merged.days || merged.days <= 0) {
+      merged.days = merged.destinations.reduce((sum, d) => sum + d.days, 0);
+    }
+  }
+
   // 检查必填字段
   const missing: string[] = [];
   if (!merged.destination) missing.push('destination');

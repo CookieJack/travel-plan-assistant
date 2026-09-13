@@ -23,6 +23,8 @@ export interface TravelRequest {
   naturalLanguage?: string;
   /** Phase17 新增：对话历史（不含最新输入） */
   clarificationHistory?: ClarificationMessage[];
+  /** Phase18 新增：关联的会话 ID（null/undefined 表示新建会话） */
+  conversationId?: string;
 }
 
 /** 多城市目的地（Phase15 新增） */

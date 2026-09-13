@@ -66,6 +66,8 @@ export const travelRequestSchema = z.object({
       }),
     )
     .optional(),
+  // Phase18 新增：关联的会话 ID
+  conversationId: z.string().trim().optional(),
 });
 
 export type TravelRequestInput = z.infer<typeof travelRequestSchema>;
