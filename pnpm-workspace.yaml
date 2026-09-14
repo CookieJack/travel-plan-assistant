@@ -11,6 +11,7 @@ minimumReleaseAgeExclude:
   - '@langchain/langgraph-sdk@1.10.2'
   - '@langchain/langgraph@1.4.14'
   - lucide-react@1.42.0
+  - zod@4.6.1
 
 allowBuilds:
   esbuild: true

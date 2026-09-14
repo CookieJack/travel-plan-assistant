@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
+import { isValidationError } from '@travel/shared';
 
 // 显式加载项目根目录的 .env（API 从 apps/api 启动，cwd 不是根目录）
 // 必须在动态导入路由之前执行，确保 DATABASE_URL 等环境变量在 Prisma 客户端创建前就绪
@@ -17,28 +18,42 @@ config({ path: join(__dirname, '../../../.env') });
 // 动态导入路由（确保环境变量已加载）
 const { health } = await import('./routes/health.js');
 const { plan } = await import('./routes/plan.js');
+const { planStream } = await import('./routes/planStream.js');
 const { plans } = await import('./routes/plans.js');
+const { auth } = await import('./routes/auth.js');
+const { user } = await import('./routes/user.js');
+const { conversations } = await import('./routes/conversations.js');
 
 // 创建 Hono 应用
 const app = new Hono();
 
-// CORS 中间件：允许前端跨域调用
+// CORS 中间件：允许前端跨域调用（Phase16：增加 Authorization header 支持）
 app.use(
   '/api/*',
   cors({
     origin: '*',
-    allowMethods: ['GET', 'POST', 'OPTIONS'],
-    allowHeaders: ['Content-Type'],
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization'],
   }),
 );
 
 // 注册路由
 app.route('/api/health', health);
 app.route('/api/plan', plan);
+app.route('/api/plan/stream', planStream);
 app.route('/api/plans', plans);
+app.route('/api/auth', auth);
+app.route('/api/user', user);
+app.route('/api/conversations', conversations);
 
 // 全局错误处理
 app.onError((err, c) => {
+  if (isValidationError(err)) {
+    return c.json(
+      { error: err.message, code: 'VALIDATION_ERROR', details: err.details },
+      400,
+    );
+  }
   console.error('[App] 未处理异常：', err);
   return c.json(
     { error: `服务器内部错误：${err.message}`, code: 'INTERNAL_ERROR' },

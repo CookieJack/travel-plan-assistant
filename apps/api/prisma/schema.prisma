@@ -1,4 +1,4 @@
-// Prisma Schema - Phase6
+// Prisma Schema - Phase16
 // PostgreSQL + Prisma ORM
 generator client {
   provider = "prisma-client-js"
@@ -6,6 +6,23 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+// Phase16 新增：用户模型
+model User {
+  id                String   @id @default(cuid())
+  username          String   @unique
+  passwordHash      String
+  salt              String
+  // 个性化默认偏好（均可为空，生成规划时自动带入）
+  defaultStyle      String?
+  defaultBudget     Float?
+  defaultPreference String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  plans TravelPlan[]
+  conversations Conversation[]  // Phase18 新增
 }
 
 model TravelPlan {
@@ -22,9 +39,49 @@ model TravelPlan {
   activities     Json?
   budget         Json?
   summary        String?
+  toolCalls      Json?    // Phase11 新增：工具调用记录
+  cityPlans      Json?    // Phase15 新增：多城市规划结果
+  parentId       String?  // Phase14 新增：修订来源的规划 ID（null 表示原始规划）
+  feedback       String?  // Phase14 新增：本次修订的反馈内容（parentId 非 null 时有值）
+  userId         String?  // Phase16 新增：规划归属用户（null 为匿名规划）
+  user           User?    @relation(fields: [userId], references: [id])
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@index([destination])
+  @@index([createdAt])
+  @@index([parentId])     // Phase14 新增：支持按 parentId 查询修订历史
+  @@index([userId])       // Phase16 新增：按用户查询规划
+}
+
+// Phase18 新增：会话模型
+model Conversation {
+  id        String   @id @default(cuid())
+  userId    String?  // 关联用户（null 为匿名会话，与 TravelPlan.userId 语义一致）
+  user      User?    @relation(fields: [userId], references: [id])
+  title     String   // 会话标题（取第一条用户消息前 20 字）
+  planId    String?  // 关联的最终规划 ID（一个会话对应一个规划）
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages ConversationMessage[]
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// Phase18 新增：会话消息模型
+model ConversationMessage {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String       // 'user' | 'assistant'
+  content        String       // 消息文本内容
+  type           String       // 'text' | 'clarification' | 'plan_result'
+  planId         String?      // type=plan_result 时关联的规划 ID
+  data           Json?        // 结构化附加数据：clarification 时存 extractedFields
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
   @@index([createdAt])
 }

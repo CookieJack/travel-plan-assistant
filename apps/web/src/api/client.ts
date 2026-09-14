@@ -1,8 +1,8 @@
 /**
  * API 请求封装
- * 封装对后端三个接口的调用
+ * 封装对后端接口的调用
  */
-import type { TravelRequest, TravelState } from '@travel/shared';
+import type { TravelRequest, TravelState, ToolCallRecord } from '@travel/shared';
 
 /** 运行模式 */
 export type RunMode = 'mock' | 'llm';
@@ -15,6 +15,17 @@ export interface PlanMeta {
 
 /** JSON 格式规划响应 */
 export type JsonPlanResponse = TravelState & PlanMeta;
+
+/** Phase17 新增：追问结果 */
+export interface ClarificationResult {
+  needClarification: true;
+  question: string;
+  extractedFields: Partial<TravelRequest>;
+  conversationId: string;  // Phase18 新增
+}
+
+/** Phase17 新增：流式规划返回类型（规划结果 或 追问） */
+export type PlanStreamResult = JsonPlanResponse | ClarificationResult;
 
 /** 历史列表项 */
 export interface PlanListItem {
@@ -47,8 +58,70 @@ export interface PlanDetail extends TravelState {
   travelStyle: string | null;
 }
 
+// ============================================================
+// Phase18 新增：会话 API 类型
+// ============================================================
+
+/** 会话列表项 */
+export interface ConversationItem {
+  id: string;
+  title: string;
+  planId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 会话消息 */
+export interface ConversationMessageItem {
+  id: string;
+  role: string;
+  content: string;
+  type: string;
+  planId: string | null;
+  data: unknown;
+  createdAt: string;
+}
+
+/** 会话详情 */
+export interface ConversationDetail {
+  id: string;
+  title: string;
+  planId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  messages: ConversationMessageItem[];
+}
+
 /** API 基础路径（Vite dev server 代理 /api 到后端） */
 const API_BASE = '/api';
+
+/** localStorage 中存储 Token 的键名 */
+const TOKEN_KEY = 'travel_auth_token';
+
+/** 获取当前登录 Token（未登录返回 null） */
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+/** 保存 Token */
+export function setToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+/** 清除 Token（登出） */
+export function clearToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+/** 构造带 Authorization 的请求头 */
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = { ...(extra ?? {}) };
+  const token = getToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
 
 /** 错误响应 */
 interface ErrorResponse {
@@ -67,7 +140,7 @@ export async function generatePlan(
   const url = `${API_BASE}/plan?mode=${mode}&format=json`;
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(request),
   });
 
@@ -96,7 +169,9 @@ export async function listPlans(
     params.set('destination', destination.trim());
   }
 
-  const res = await fetch(`${API_BASE}/plans?${params.toString()}`);
+  const res = await fetch(`${API_BASE}/plans?${params.toString()}`, {
+    headers: authHeaders(),
+  });
   const data = await res.json();
   if (!res.ok) {
     const err = data as ErrorResponse;
@@ -113,7 +188,9 @@ export async function listPlans(
  * 需转换为包含 request 对象的格式，以兼容 PlanResult 组件。
  */
 export async function getPlanById(id: string): Promise<PlanDetail> {
-  const res = await fetch(`${API_BASE}/plans/${id}`);
+  const res = await fetch(`${API_BASE}/plans/${id}`, {
+    headers: authHeaders(),
+  });
   const data = await res.json();
   if (!res.ok) {
     const err = data as ErrorResponse;
@@ -137,4 +214,372 @@ export async function getPlanById(id: string): Promise<PlanDetail> {
     ...(data as PlanDetail),
     request,
   } as PlanDetail;
+}
+
+// ============================================================
+// Phase18 新增：会话 API
+// ============================================================
+
+/**
+ * 获取会话列表
+ * GET /api/conversations
+ */
+export async function listConversations(): Promise<{ items: ConversationItem[] }> {
+  const res = await fetch(`${API_BASE}/conversations`, {
+    headers: authHeaders(),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    const err = data as ErrorResponse;
+    throw new Error(err.error || '获取会话列表失败');
+  }
+  return data as { items: ConversationItem[] };
+}
+
+/**
+ * 获取会话详情（含消息）
+ * GET /api/conversations/:id
+ */
+export async function getConversation(id: string): Promise<ConversationDetail> {
+  const res = await fetch(`${API_BASE}/conversations/${id}`, {
+    headers: authHeaders(),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    const err = data as ErrorResponse;
+    throw new Error(err.error || '获取会话详情失败');
+  }
+  return data as ConversationDetail;
+}
+
+/**
+ * 删除会话
+ * DELETE /api/conversations/:id
+ */
+export async function deleteConversation(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/conversations/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as ErrorResponse).error || '删除会话失败');
+  }
+}
+
+// ============================================================
+// Phase14 新增：规划修订 API
+// ============================================================
+
+/** 修订请求 */
+export interface ReviseRequest {
+  feedback: string;
+  mode?: RunMode;
+}
+
+/**
+ * 非流式修订规划
+ * POST /api/plans/:id/revise
+ */
+export async function revisePlan(
+  planId: string,
+  body: ReviseRequest,
+): Promise<JsonPlanResponse> {
+  const res = await fetch(`${API_BASE}/plans/${planId}/revise`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    const err = data as ErrorResponse;
+    throw new Error(err.error || '修订规划失败');
+  }
+  return data as JsonPlanResponse;
+}
+
+/**
+ * 流式修订规划
+ * POST /api/plans/:id/revise/stream
+ *
+ * 复用 SSE 解析逻辑，通过回调实时推送节点完成事件。
+ */
+export async function revisePlanStream(
+  planId: string,
+  body: ReviseRequest,
+  callbacks?: StreamCallbacks,
+): Promise<JsonPlanResponse> {
+  const res = await fetch(`${API_BASE}/plans/${planId}/revise/stream`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok || !res.body) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as ErrorResponse).error || '修订规划失败');
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let finalResult: JsonPlanResponse | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split('\n\n');
+    buffer = events.pop() || '';
+
+    for (const raw of events) {
+      const parsed = parseSSEEvent(raw);
+      if (!parsed) continue;
+
+      switch (parsed.event) {
+        case 'node_complete':
+          callbacks?.onNodeComplete?.(parsed.data.node, parsed.data.toolCalls);
+          break;
+        case 'cache_hit':
+        case 'complete':
+          finalResult = parsed.data.result as JsonPlanResponse;
+          break;
+        case 'error':
+          throw new Error(parsed.data.message || '修订规划失败');
+      }
+    }
+  }
+
+  if (!finalResult) throw new Error('未收到修订结果');
+  return finalResult;
+}
+
+/** 流式规划回调 */
+export interface StreamCallbacks {
+  /** 某个 Agent 节点执行完成 */
+  onNodeComplete?: (node: string, toolCalls?: ToolCallRecord[]) => void;
+  /** Phase17 新增：收到追问时回调 */
+  onClarification?: (question: string, extractedFields: Partial<TravelRequest>) => void;
+  /** Phase18 新增：收到会话 ID 时回调 */
+  onConversationId?: (conversationId: string) => void;
+}
+
+/** 解析单个 SSE 文本块为 { event, data } */
+function parseSSEEvent(raw: string): { event: string; data: any } | null {
+  const lines = raw.split('\n');
+  let event = 'message';
+  let dataStr = '';
+  for (const line of lines) {
+    if (line.startsWith('event:')) {
+      event = line.slice(6).trim();
+    } else if (line.startsWith('data:')) {
+      dataStr += line.slice(5).trim();
+    }
+  }
+  if (!dataStr) return null;
+  try {
+    return { event, data: JSON.parse(dataStr) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 流式生成旅行规划
+ * POST /api/plan/stream?mode={mode}
+ *
+ * 使用 fetch + ReadableStream 手动解析 SSE（POST 请求无法用 EventSource）
+ * 通过回调实时推送节点完成事件，最终返回完整规划结果或追问结果。
+ *
+ * Phase17 新增：支持 clarification 事件，返回追问结果。
+ * Phase17 优化：支持 signal 参数，可中断请求（用户中途改计划时取消）。
+ */
+export async function generatePlanStream(
+  request: TravelRequest,
+  mode: RunMode,
+  callbacks?: StreamCallbacks,
+  signal?: AbortSignal,
+): Promise<PlanStreamResult> {
+  const res = await fetch(`${API_BASE}/plan/stream?mode=${mode}`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(request),
+    signal,
+  });
+
+  if (!res.ok || !res.body) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as ErrorResponse).error || '规划生成失败');
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let finalResult: JsonPlanResponse | null = null;
+  let clarification: ClarificationResult | null = null;
+  let conversationId = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    // SSE 事件以空行分隔
+    const events = buffer.split('\n\n');
+    buffer = events.pop() || '';
+
+    for (const raw of events) {
+      const parsed = parseSSEEvent(raw);
+      if (!parsed) continue;
+
+      switch (parsed.event) {
+        case 'node_complete':
+          callbacks?.onNodeComplete?.(parsed.data.node, parsed.data.toolCalls);
+          break;
+        case 'cache_hit':
+        case 'complete':
+          finalResult = parsed.data.result as JsonPlanResponse;
+          // Phase18：提取会话 ID
+          if (parsed.data.conversationId) {
+            conversationId = parsed.data.conversationId as string;
+            callbacks?.onConversationId?.(conversationId);
+          }
+          break;
+        case 'clarification':
+          clarification = {
+            needClarification: true,
+            question: parsed.data.question,
+            extractedFields: parsed.data.extractedFields,
+            conversationId: parsed.data.conversationId ?? '',
+          };
+          // Phase18：提取会话 ID
+          if (parsed.data.conversationId) {
+            conversationId = parsed.data.conversationId as string;
+            callbacks?.onConversationId?.(conversationId);
+          }
+          callbacks?.onClarification?.(
+            clarification.question,
+            clarification.extractedFields,
+          );
+          break;
+        case 'error':
+          throw new Error(parsed.data.message || '规划生成失败');
+      }
+    }
+  }
+
+  if (clarification) return clarification;
+  if (!finalResult) throw new Error('未收到规划结果');
+  return finalResult;
+}
+
+// ============================================================
+// Phase16 新增：认证 & 用户偏好 API
+// ============================================================
+
+/** 用户信息 */
+export interface UserInfo {
+  id: string;
+  username: string;
+  defaultStyle: string | null;
+  defaultBudget: number | null;
+  defaultPreference: string | null;
+}
+
+/** 用户默认偏好 */
+export interface UserPreferences {
+  defaultStyle: string | null;
+  defaultBudget: number | null;
+  defaultPreference: string | null;
+}
+
+/**
+ * 用户注册
+ * POST /api/auth/register
+ */
+export async function register(
+  username: string,
+  password: string,
+): Promise<{ token: string; user: { id: string; username: string } }> {
+  const res = await fetch(`${API_BASE}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error((data as ErrorResponse).error || '注册失败');
+  }
+  return data;
+}
+
+/**
+ * 用户登录
+ * POST /api/auth/login
+ */
+export async function login(
+  username: string,
+  password: string,
+): Promise<{ token: string; user: { id: string; username: string } }> {
+  const res = await fetch(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error((data as ErrorResponse).error || '登录失败');
+  }
+  return data;
+}
+
+/**
+ * 获取当前登录用户信息
+ * GET /api/auth/me
+ */
+export async function getCurrentUser(): Promise<UserInfo> {
+  const res = await fetch(`${API_BASE}/auth/me`, {
+    headers: authHeaders(),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error((data as ErrorResponse).error || '获取用户信息失败');
+  }
+  return data as UserInfo;
+}
+
+/**
+ * 获取用户默认偏好
+ * GET /api/user/preferences
+ */
+export async function getPreferences(): Promise<UserPreferences> {
+  const res = await fetch(`${API_BASE}/user/preferences`, {
+    headers: authHeaders(),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error((data as ErrorResponse).error || '获取偏好失败');
+  }
+  return data as UserPreferences;
+}
+
+/**
+ * 更新用户默认偏好
+ * PUT /api/user/preferences
+ */
+export async function updatePreferences(
+  prefs: Partial<UserPreferences>,
+): Promise<UserPreferences> {
+  const res = await fetch(`${API_BASE}/user/preferences`, {
+    method: 'PUT',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(prefs),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error((data as ErrorResponse).error || '更新偏好失败');
+  }
+  return data as UserPreferences;
 }

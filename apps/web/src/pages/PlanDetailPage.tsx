@@ -89,7 +89,7 @@ export function PlanDetailPage() {
           创建于 {new Date(detail.createdAt).toLocaleString('zh-CN')}
         </span>
       </div>
-      <h1 className="text-2xl font-bold">
+      <h1 className="font-serif text-2xl font-semibold tracking-tight">
         {detail.request.destination} · {detail.request.days}天规划详情
       </h1>
       <PlanResult result={detail} />
